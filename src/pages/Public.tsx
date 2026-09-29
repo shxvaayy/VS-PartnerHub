@@ -47,26 +47,28 @@ export function Landing() {
   const { user, demo } = useAuth();
   return (
     <div className="public-page">
-      <nav className="public-nav">
-        <Link to="/">
-          <Logo />
-        </Link>
-        <div className="public-links">
-          <a href="#platform">The platform</a>
-          <a href="#partners">Who it’s for</a>
-          <a href="#how-it-works">How it works</a>
-        </div>
-        <div className="public-nav-actions">
-          <Link className="text-button" to={user ? "/app" : "/login"}>
-            {user ? "Your workspace" : "Sign in"}
-            <ArrowUpRight size={16} />
+      <header className="public-header">
+        <nav className="public-nav">
+          <Link to="/">
+            <Logo />
           </Link>
-          <Link className="button button-primary" to="/register">
-            Become a partner
-            <ArrowRight size={16} />
-          </Link>
-        </div>
-      </nav>
+          <div className="public-links">
+            <a href="#platform">The platform</a>
+            <a href="#partners">Who it’s for</a>
+            <a href="#how-it-works">How it works</a>
+          </div>
+          <div className="public-nav-actions">
+            <Link className="text-button" to={user ? "/app" : "/login"}>
+              {user ? "Your workspace" : "Sign in"}
+              <ArrowUpRight size={16} />
+            </Link>
+            <Link className="button button-primary" to="/register">
+              Become a partner
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+        </nav>
+      </header>
       <section className="landing-hero">
         <div className="hero-copy">
           <span className="overline-pill">

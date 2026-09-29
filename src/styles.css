@@ -4043,6 +4043,16 @@ select {
 .public-page {
   background: #fcfdf9;
 }
+.public-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #fcfdf9;
+  box-shadow: 0 1px 0 var(--border);
+}
+.public-page > section[id] {
+  scroll-margin-top: 144px;
+}
 .public-nav {
   display: flex;
   align-items: center;
