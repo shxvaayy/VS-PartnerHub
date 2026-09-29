@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: partnerhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: partnerhub
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U partnerhub -d partnerhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  app:
+    build: .
+    init: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4000
+      DEMO_MODE: "false"
+      APP_URL: ${APP_URL:?Set an HTTPS APP_URL in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      DATABASE_URL: postgresql://partnerhub:${POSTGRES_PASSWORD}@db:5432/partnerhub
+      UPLOAD_DIR: /app/uploads
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-VS PartnerHub <partners@example.com>}
+    volumes:
+      - private_uploads:/app/uploads
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+volumes:
+  postgres_data:
+  private_uploads:

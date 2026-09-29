@@ -1,0 +1,140 @@
+# API reference
+
+Base path: `/api`. JSON requests use `Content-Type: application/json`; document upload uses multipart form data. The browser and API share an origin. There is no public API-key or bearer-token authentication surface.
+
+## Authentication and CSRF
+
+`POST /auth/login` takes `{ "email": "...", "password": "..." }` and sets an HttpOnly session cookie. The response includes `{ user, csrfToken }`. Send the cookie on subsequent calls and `X-CSRF-Token: <csrfToken>` on authenticated mutations.
+
+If the account enables email sign-in verification, login instead returns `{ requiresOtp: true, challengeId }` without creating a new session. Call `POST /auth/verify-login` with `{ challengeId, code }` to complete sign-in. `verificationCode` and local invitation links appear only in development demo mode.
+
+| Method      | Path                      | Purpose                                                          |
+| ----------- | ------------------------- | ---------------------------------------------------------------- |
+| GET         | `/health`                 | Database-backed readiness                                        |
+| GET         | `/auth/session`           | Current user, CSRF token and demo flag                           |
+| POST        | `/auth/register`          | Create organization/contact; see registration payload below      |
+| POST        | `/auth/login`             | Password sign-in, optional email challenge                       |
+| POST        | `/auth/verify-login`      | Consume sign-in challenge                                        |
+| POST        | `/auth/logout`            | Revoke current session                                           |
+| POST        | `/auth/verify`            | Verify registration email with `{ code }`                        |
+| POST        | `/auth/resend-code`       | Issue a new registration code, subject to resend interval        |
+| POST        | `/auth/forgot-password`   | Queue recovery with `{ email }`; generic response                |
+| POST        | `/auth/reset-password`    | Consume `{ token, password }` and revoke sessions                |
+| POST        | `/auth/change-password`   | `{ current_password, password }`; returns replacement CSRF token |
+| GET / PATCH | `/auth/preferences`       | Read preferences; update `{ email: boolean }`                    |
+| POST        | `/auth/mfa`               | `{ enabled, current_password }` for email sign-in verification   |
+| GET         | `/auth/invitation/:token` | Read a valid invitation's name/email/role                        |
+| POST        | `/auth/accept-invitation` | `{ token, name, password }`; creates scoped user/session         |
+
+Registration takes `name`, `email`, `password`, `accept_terms: true` and `organization` with `type`, `legal_name`, `trade_name`, `industry`, `city`, `country`, `website`, `contact_name`, `contact_email`, `contact_phone` and `details`. Business details are type-specific; [server/validation.ts](../server/validation.ts) is the authoritative schema. Upload verification files through `/documents`, then verify email and submit to VS review.
+
+## Organizations and documents
+
+| Method      | Path                          | Purpose                                                                                            |
+| ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET         | `/organizations`              | Scoped directory; `discovery=true` returns verified public profiles                                |
+| GET / PATCH | `/organizations/:id`          | Authorized profile access/update                                                                   |
+| POST        | `/organizations/:id/status`   | VS review decision `{ status, note }`                                                              |
+| POST        | `/organizations/:id/resubmit` | Resubmit clarification/rejection after updates                                                     |
+| GET         | `/documents`                  | Scoped documents; filter `organization_id`, `record_id`, status and query                          |
+| POST        | `/documents`                  | Multipart `file`, `category`; optional `organization_id`, `record_id`, `expires_at`, `previous_id` |
+| GET         | `/documents/:id/download`     | Authorized attachment download; audited                                                            |
+| POST        | `/documents/:id/review`       | `{ status, note }` from permitted verification staff                                               |
+
+Organization filters include `q`, `type`, `status`, `location`, `category`, `certification`, `page` and `limit`. Profiles include NAICS/SIC and technology/capability information in details, searchable by `q`. Non-privileged discovery responses remove private KYC/contact fields.
+
+## Business records
+
+Kinds: `requirements`, `rfqs`, `quotations`, `orders`, `deliveries`, `contracts`, `invoices`, `payments`, `catalog`, `candidates`, `interviews`, `engagements`, `timesheets`, `milestones`, `demos`, `performance`, `tickets`.
+
+| Method      | Path                            | Purpose                                                    |
+| ----------- | ------------------------------- | ---------------------------------------------------------- |
+| GET / POST  | `/records/:kind`                | List or create records                                     |
+| GET / PATCH | `/records/:kind/:id`            | Read or edit a record                                      |
+| POST        | `/records/:kind/:id/transition` | `{ status, version, note }`                                |
+| GET / POST  | `/records/:kind/:id/comments`   | Read conversation or add `{ body }`                        |
+| GET         | `/records/:kind/:id/history`    | Audit events and version snapshots                         |
+| GET         | `/records/:kind/export`         | Filtered CSV, maximum 10,000 records                       |
+| GET         | `/records/rfqs/:id/compare`     | Buyer-authorized submitted quotation comparison            |
+| POST        | `/records/contracts/:id/renew`  | `{ end_date, version, note }`; new version requires review |
+
+Lists return `{ items, total, page, limit, can_create }`. Use `q`, `status`, `parent_id`, `category`, `from`, `to`, `page` and `limit` as applicable. Detail responses include `allowed_transitions` and `can_edit`; calculate available actions from these values.
+
+Record writes take:
+
+```json
+{
+  "title": "Office monitor procurement",
+  "currency": "INR",
+  "parent_id": null,
+  "buyer_org_id": null,
+  "partner_org_id": null,
+  "payload": {
+    "deadline": "2027-01-15",
+    "required_date": "2027-01-30",
+    "delivery_address": "Buyer campus, Bengaluru",
+    "category": "Information Technology"
+  },
+  "items": [
+    {
+      "name": "27 inch monitor",
+      "specification": "IPS panel, enterprise warranty",
+      "quantity": 2,
+      "unit": "units",
+      "unit_price": 0,
+      "tax": 18,
+      "discount": 0
+    }
+  ],
+  "invitations": ["<verified-partner-uuid>"],
+  "note": ""
+}
+```
+
+This is an RFQ example; use current future dates and actual authorized UUIDs. Module payload schemas live in [server/record-service.ts](../server/record-service.ts); field labels are in [src/lib/form-definitions.ts](../src/lib/form-definitions.ts). Unknown payload keys are rejected. For an edit, supply the current `version` and editable fields. Server-managed values such as candidate consent/retention metadata are not editable.
+
+Input monetary values are major currency units. Returned `amount_minor`/`outstanding_minor` use integer minor units (paise/cents). The server calculates totals and copies approved commercial values into dependent orders/invoices. Never treat browser totals as authoritative. Currency is inherited from commercial parents.
+
+`GET /lookups?kind=orders` (or another kind) returns scoped eligible parents, partners and catalog choices. Preceding stages must be completed before a record appears as an eligible parent. A foreign UUID, mismatched organization, uninvited partner or invalid stage is rejected.
+
+## Administration, reporting and notifications
+
+| Method      | Path                            | Purpose                                                 |
+| ----------- | ------------------------------- | ------------------------------------------------------- |
+| GET         | `/dashboard`                    | Scoped KPIs, charts and activity; date/currency filters |
+| GET         | `/search?q=...`                 | Scoped global search                                    |
+| GET         | `/reports/export`               | Management summary CSV                                  |
+| GET         | `/notifications`                | Current user's notifications                            |
+| POST        | `/notifications/:id/read`       | Mark user's notification read                           |
+| POST        | `/notifications/read-all`       | Mark all user's notifications read                      |
+| GET         | `/admin/team`                   | Authorized users and pending invitations                |
+| POST        | `/admin/team/invite`            | `{ name, email, role, organization_id? }`               |
+| PATCH       | `/admin/team/:id`               | Authorized name/role/active-state updates               |
+| DELETE      | `/admin/team/invitations/:id`   | Revoke pending invitation                               |
+| GET         | `/admin/roles`                  | Role permission definitions                             |
+| PATCH       | `/admin/roles/:id`              | Change a permitted role's permission matrix             |
+| GET / PATCH | `/admin/settings`               | Read settings / Super Admin updates                     |
+| GET         | `/admin/audit`                  | Paginated, filtered audit history                       |
+| GET         | `/admin/organizations-export`   | Authorized organization directory CSV                   |
+| GET         | `/admin/email-status`           | Delivery metadata; no message bodies or secrets         |
+| POST        | `/admin/email-status/:id/retry` | Queue a failed email again                              |
+
+All routes enforce server-side role and tenant scope. Administrative settings/roles/users cannot grant an external organization internal VS privileges.
+
+## Errors and concurrency
+
+Errors have `{ "error": "Readable explanation", "details": [{ "field": "payload.deadline", "message": "..." }] }` where field details are available.
+
+| Status    | Meaning                                                  |
+| --------- | -------------------------------------------------------- |
+| 400       | Malformed request                                        |
+| 401       | Authentication required or credentials invalid           |
+| 403       | Permission, verification or CSRF failure                 |
+| 404       | Record missing or outside authorized visibility          |
+| 409       | Stale version, duplicate reference or consumed operation |
+| 413       | File/request too large                                   |
+| 422       | Invalid fields or business workflow prerequisites        |
+| 429       | Rate limit; wait before retrying                         |
+| 500 / 503 | Unexpected server failure / unavailable database         |
+
+After a 409, fetch the latest record and let the user review changes before retrying. Do not blindly replay financial mutations. The application uses business uniqueness and versions; it does not expose a generic idempotency-key header.

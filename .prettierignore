@@ -1,0 +1,10 @@
+node_modules
+package-lock.json
+dist
+build
+data
+uploads
+backups
+artifacts
+test-results
+playwright-report
