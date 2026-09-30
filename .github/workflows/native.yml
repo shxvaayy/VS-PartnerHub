@@ -17,6 +17,9 @@ on:
       - package-lock.json
       - capacitor.config.ts
       - scripts/verify-native.mjs
+      - scripts/verify-native-*.mjs
+      - scripts/native-fixture.mjs
+      - scripts/prepare-native-ios-tests.rb
       - scripts/prepare-native-offline.mjs
       - .github/workflows/native.yml
   pull_request:
@@ -29,6 +32,9 @@ on:
       - package-lock.json
       - capacitor.config.ts
       - scripts/verify-native.mjs
+      - scripts/verify-native-*.mjs
+      - scripts/native-fixture.mjs
+      - scripts/prepare-native-ios-tests.rb
       - scripts/prepare-native-offline.mjs
       - .github/workflows/native.yml
 permissions:
@@ -65,12 +71,35 @@ jobs:
         run: ./android/gradlew -p android --no-daemon --console=plain :app:assembleDebug :app:bundleRelease :app:lintDebug
       - name: Inspect packaged application identity and workspace configuration
         run: node scripts/verify-native.mjs android
+      - name: Prepare a separate Android build for isolated acceptance
+        env:
+          MOBILE_DEV: "true"
+          MOBILE_SERVER_URL: http://127.0.0.1:4207
+        run: |
+          npx cap sync android
+          ./android/gradlew -p android --no-daemon --console=plain :app:assembleDebug
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-partnerhub-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify authenticated Android workflows in the installed app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: node --import tsx scripts/verify-native-android.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: partnerhub-android-verification
           path: |
             artifacts/native-verification/android/
+            artifacts/native-verification/android-acceptance/
             android/app/build/reports/lint-results-debug.*
           retention-days: 7
   ios:
@@ -90,9 +119,22 @@ jobs:
       - run: npx cap sync ios
       - name: Build and launch an unsigned simulator app
         run: node scripts/verify-native.mjs ios
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: gem install xcodeproj --version 1.27.0 --no-document
+      - name: Prepare a separate iPhone build for isolated acceptance
+        env:
+          MOBILE_DEV: "true"
+          MOBILE_SERVER_URL: http://127.0.0.1:4207
+        run: npx cap sync ios
+      - name: Verify authenticated iPhone workflows through XCTest
+        run: node --import tsx scripts/verify-native-ios.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: partnerhub-ios-verification
-          path: artifacts/native-verification/ios/
+          path: |
+            artifacts/native-verification/ios/
+            artifacts/native-verification/ios-acceptance/
           retention-days: 7

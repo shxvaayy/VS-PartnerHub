@@ -1,6 +1,7 @@
 import { lazy, Suspense, Component, type ReactNode } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
+import NativeFileLinks from "./components/NativeFileLinks";
 import { EmptyState, Loading, ToastProvider } from "./components/ui";
 const Layout = lazy(() => import("./components/Layout"));
 const Assistant = lazy(() => import("./pages/Assistant"));
@@ -108,6 +109,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <ToastProvider>
+            <NativeFileLinks />
             <Suspense fallback={<Loading />}>
               <Routes>
                 <Route path="/" element={<Landing />} />

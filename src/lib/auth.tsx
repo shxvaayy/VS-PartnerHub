@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, setCsrf } from "./api";
+import { clearPrivateDownloads } from "./downloads";
 import type { SessionUser } from "../../shared/domain";
 type Session = { user: SessionUser | null; csrfToken: string; demo: boolean };
 type Context = {
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const channel = useRef<BroadcastChannel | null>(null);
   const previousUser = useRef<string | null | undefined>(undefined);
   const clearPrivateData = () => {
+    void clearPrivateDownloads().catch(() => {});
     void client.cancelQueries({
       predicate: (query) => query.queryKey[0] !== "session",
     });

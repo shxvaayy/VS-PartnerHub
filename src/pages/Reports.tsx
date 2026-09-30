@@ -36,7 +36,8 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { useApi, ApiError, queryString } from "../lib/api";
+import { useApi, queryString } from "../lib/api";
+import { downloadFile } from "../lib/downloads";
 import { useAuth } from "../lib/auth";
 import {
   Button,
@@ -203,37 +204,22 @@ export default function Reports() {
         view: selected.id,
         table: selectedTable.id,
       });
-      const response = await fetch(
+      const destination = await downloadFile(
         `/api/reports/${kind === "csv" ? `datasets/${selected.id}` : kind}?${filters}`,
-        { credentials: "include" },
-      );
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        if (response.status === 401)
-          window.dispatchEvent(new Event("partnerhub:session-invalid"));
-        throw new ApiError(
-          error.error || "The export could not finish. Please try again.",
-          response.status,
-        );
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download =
         kind === "power-bi"
           ? `VS-PartnerHub-Power-BI-${to}.zip`
-          : `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast(
-        kind === "csv"
-          ? "Report exported"
-          : kind === "power-bi"
-            ? "Power BI project downloaded"
-            : "Power Query file downloaded",
+          : `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`,
       );
+      if (destination === "browser")
+        toast(
+          kind === "csv"
+            ? "Report exported"
+            : kind === "power-bi"
+              ? "Power BI project downloaded"
+              : "Power Query file downloaded",
+        );
     } catch (e) {
-      setExportError(e);
+      if ((e as { name?: string })?.name !== "AbortError") setExportError(e);
     } finally {
       setDownloading("");
     }

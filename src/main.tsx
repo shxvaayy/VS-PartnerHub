@@ -14,6 +14,9 @@ import App from "./App";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
+window.addEventListener("partnerhub:resume", () => {
+  void queryClient.invalidateQueries();
+});
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
