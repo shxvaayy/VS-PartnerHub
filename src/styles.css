@@ -1593,6 +1593,10 @@ select {
   max-width: 100%;
   overscroll-behavior-inline: contain;
 }
+.table-scroll:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1614,6 +1618,7 @@ select {
   border-bottom: 1px solid #edf1e7;
   vertical-align: middle;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .data-table tbody tr:last-child td {
   border-bottom: 0;
@@ -3866,10 +3871,15 @@ select {
   margin-top: 5px;
 }
 .audit-table {
-  min-width: 1050px;
+  min-width: 960px;
 }
 .audit-table td {
-  font-size: 12px;
+  font-size: 13px;
+}
+.audit-table .identity-cell strong {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .audit-status {
   display: flex;
@@ -3893,9 +3903,8 @@ select {
 .audit-remarks {
   max-width: 230px;
   min-width: 150px;
-  color: #b1c49a;
-  font-size: 12px;
-  line-height: 1.8;
+  color: var(--muted);
+  line-height: 1.65;
 }
 .notification-row {
   display: flex;

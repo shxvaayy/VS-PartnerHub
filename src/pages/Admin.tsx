@@ -614,7 +614,12 @@ export function Audit() {
         ) : result.error ? (
           <ErrorState error={result.error} retry={() => result.refetch()} />
         ) : result.data.items.length ? (
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            role="region"
+            aria-label="Audit trail records"
+            tabIndex={0}
+          >
             <table className="data-table audit-table">
               <thead>
                 <tr>
