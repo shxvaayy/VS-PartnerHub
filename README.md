@@ -30,6 +30,7 @@ Email OTP uses an actual SMTP or Resend connection. Without one, registration an
 - Service proposals, milestones and performance; technology solutions, API/integration descriptions, documentation and demo requests.
 - Compliance policies by document and organization type, versioned uploads, review, expiry and configurable renewal reminders.
 - Internal teams, role permissions, email/in-app notifications, support conversations, public enquiries, reports, filters, drill-downs and CSV exports/imports.
+- Eight BI dashboards with KPI definitions, drill-downs, PDF/CSV exports, an interactive Power BI preview and downloadable native Power BI projects containing authorized data.
 - English-language VS AI with authorized sources, private history, real PDF/image extraction, human review, six specialist tasks, reusable analyses and animated progress. Common status queries run directly against current data.
 - Opt-in public partner directory, signed ERP webhooks, expiring scoped API tokens, operational alerts and evidence-based forecasts/performance.
 - Responsive web app, installable PWA and branded Android/iOS Capacitor projects.
@@ -70,6 +71,8 @@ Generate the manager handoff with `npm run report:verification` after completing
 [Deployment instructions](docs/DEPLOYMENT.md) cover Docker/PostgreSQL, HTTPS, provider configuration and first-administrator setup. [Operations](docs/OPERATIONS.md) covers backup/recovery and retention. The runtime should use a dedicated account, persistent private storage and an authorized email sender.
 
 `npm run recovery:backup` creates an encrypted, consistent database/private-file backup without running migrations. `recovery:unpack` authenticates and verifies it into a new directory; `recovery:verify` rehearses PostgreSQL recovery in an isolated local cluster. Key, source configuration and verification-account setup are documented in [Operations](docs/OPERATIONS.md#coordinated-encrypted-backup).
+
+The [operations workflow](.github/workflows/operations.yml) schedules a daily encrypted capture, isolated restore check and 30-day off-site Actions artifact. Its hourly health probe checks the live database/revision and retained-backup freshness. [Operations](docs/OPERATIONS.md#scheduled-off-site-backup-and-health-monitoring) documents the schedule, separate key recovery and destination retrieval drill.
 
 Payment records track actual bank references entered by authorized users; financial settlement is an external integration. Statutory KYC and BGV decisions are staff-reviewed. Electronic signing evidence does not issue a statutory certificate-based digital signature. Native distribution requires the platform SDKs, signing identities and a deployed HTTPS origin. These external dependencies must be configured and verified for the intended rollout.
 

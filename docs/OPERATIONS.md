@@ -39,7 +39,19 @@ The archive contains a database dump, referenced document/logo bytes and a manif
 
 Incomplete browser-upload staging objects are transient and are not included as finalized documents. After recovery, users must retry unfinished uploads. The archive format supports up to 99,998 finalized document/logo files and a 32 MB manifest; larger sets fail explicitly instead of publishing an unrestorable set. Restore defaults to a 20 GiB size limit; `--max-bytes` can increase it after checking destination capacity.
 
-This command creates the backup artifact. Configure an approved off-site destination, retention policy, schedule, failure alerts and recovery-key escrow separately; a local file is not an independent disaster-recovery copy.
+This command creates the encrypted backup artifact. The repository's scheduled workflow below supplies off-site retention and automated restore checks; a standalone local file is not an independent disaster-recovery copy.
+
+## Scheduled off-site backup and health monitoring
+
+`.github/workflows/operations.yml` uses the existing GitHub repository as the independent destination. It captures the live PostgreSQL database and referenced private Blob files daily at **03:17 UTC**, restores each capture into a disposable PostgreSQL cluster and uploads only the encrypted archive plus a redacted verification report. An unsuccessful capture or restore is not published. Artifacts are named `partnerhub-recovery-<run-id>-<attempt>` and expire after **30 days**. GitHub scheduling can be delayed; these times are not a recovery SLA.
+
+Hourly at minute **43**, the health job checks HTTPS, database reachability, a valid deployed revision, an uncached health response and the latest retained backup's age. It fails if the latest available archive is older than **36 hours**, missing or expired. A manual **Run workflow** executes capture, restore, upload and then the health probe. Failed jobs appear in the repository's Actions status and use the repository owner's GitHub workflow-notification preferences; no separate external alert inbox has been configured.
+
+The recovery runner reads repository Actions secrets `PARTNERHUB_RECOVERY_DATABASE_URL`, `PARTNERHUB_RECOVERY_BLOB_TOKEN` and `PARTNERHUB_RECOVERY_KEY`. The existing application-settings key is escrowed separately as `PARTNERHUB_INTEGRATION_RECOVERY_KEY`; it is not needed by the structural restore job. Preserve the original recovery keys in a private location too. GitHub's secret store does not provide a plaintext recovery download.
+
+The repository is public. Artifacts therefore contain **ciphertext and redacted operational evidence only**. The plaintext database/files, keys and credentials are never uploaded. Capture uses a read-only database snapshot; restore uses a newly created local cluster and no live source credentials. The runner removes temporary plaintext and the uploaded artifact directory when its work ends. The archive hash and encryption-key fingerprint in `verification.json` allow an authorized operator to identify and authenticate a downloaded recovery set.
+
+To rehearse recovery from the destination, download a retained Actions artifact, verify the enclosed archive SHA-256 against `verification.json`, then run `recovery:verify` with the separately preserved key. Use an existing review account with the command below for an authenticated application drill. The automated schedule uses `--data-only`: it verifies archive authentication, all captured table counts and indexes, finalized document/logo references and hashes, and temporary-cluster cleanup without storing a live user's password in CI. This structural check is distinct from authenticated workspace acceptance.
 
 ## Authenticate and unpack
 
@@ -57,6 +69,12 @@ With PostgreSQL server/client tools available locally, this command creates its 
 
 ```sh
 npm run recovery:verify -- --input backups/release.vshub --key /private/keys/partnerhub-recovery.key --credentials /private/review-account.json
+```
+
+For the same structural mode used by the scheduled workflow:
+
+```sh
+npm run recovery:verify -- --input backups/release.vshub --key /private/keys/partnerhub-recovery.key --data-only
 ```
 
 The credentials file contains the email/password of an authorized internal review account already in that backup and should be `0600`. A password account is required for this drill; the runner does not bypass MFA or send live verification emails. It checks all captured table counts, indexes, document/logo references, existing login and role permissions, dashboard/audit APIs, available module records/history and private download hashes, including anonymous denial. It deliberately never imports `server/index.ts`, which starts background workers.

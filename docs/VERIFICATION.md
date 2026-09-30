@@ -1,5 +1,15 @@
 # Verification evidence
 
+## Power BI and operational recovery — 30 September 2026
+
+The Power BI addition includes eight permission-scoped dashboard pages, an interactive desktop/mobile preview and a native `.pbip` project download containing the actual authorized snapshot. Four export checks validate independent Microsoft project/report/page/visual schemas, linked model fields, non-overlapping geometry, exact dataset preservation, units and absence of embedded credentials. The API regression checks anonymous/source/organization restrictions and the export audit event. Three browser scenarios exercise all eight dashboards, KPI definitions, the actual ZIP download, filters, reloads, role boundaries, accessibility and 320px navigation. Mobile highlight cards abbreviate large values; detailed KPI values remain exact.
+
+The complete updated suites passed **177/177 on SQLite**, **177/177 on PostgreSQL** and **55/55 browser scenarios**, with no retries or skipped tests. TypeScript, formatting, production build/runtime, seven file/import/export scenarios and seven authenticated local-SMTP scenarios passed. `npm audit --audit-level=high` reported zero vulnerabilities. These are isolated/local checks; external email delivery and rendering inside Power BI Desktop were not executed.
+
+Thirteen operations tests cover uncached HTTPS/database/revision health, rejected insecure/failed probes, backup expiry/age and paginated artifact discovery. A populated PostgreSQL fixture also passed the three structural restore checks across 42 tables and 64 private documents using the new `--data-only` mode. This is the pre-publication restore check used by the scheduled workflow; hosted execution and independent retrieval from the destination are separate evidence.
+
+Local reports and preview screenshots are retained under `artifacts/bi-verification/`; current full-suite results are under `artifacts/local-verification/`. Operational fixture evidence is in `artifacts/operations/fixture-data-restore.json`. No source credentials or business rows are published in the documentation.
+
 ## Compliance expiry review — 30 September 2026
 
 Seven focused regressions cover the full default reminder sequence, organization/document policy overrides, existing notice compatibility and human changes after the worker's initial batch read. Five scenarios failed against the preceding implementation: the post-expiry notice could be suppressed by a due-day notice; a verification rejection or superseding upload could be processed from stale document data; and a renewed or terminated contract could receive a false expiry audit/notification. All seven focused checks pass after the correction.

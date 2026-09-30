@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import {
   Activity,
+  ArrowLeft,
   ArrowDownToLine,
   ArrowUpRight,
   BarChart3,
@@ -69,6 +70,7 @@ import type {
   ReportViewId,
 } from "../../shared/analytics";
 import "../reports.css";
+import PowerBiPreview from "../components/PowerBiPreview";
 
 const icons = {
   executive: LayoutDashboard,
@@ -133,6 +135,16 @@ export default function Reports() {
     };
   }, []);
   const [params, setParams] = useSearchParams();
+  const powerBiPreview = params.get("presentation") === "power-bi";
+  const [biFiltersOpen, setBiFiltersOpen] = useState(false);
+  const biFiltersId = useId();
+  function showPowerBi(show: boolean) {
+    const next = new URLSearchParams(params);
+    if (show) next.set("presentation", "power-bi");
+    else next.delete("presentation");
+    setExportOpen(false);
+    setParams(next);
+  }
   const { user } = useAuth(),
     toast = useToast();
   const from = params.get("from") || dateInput(-179),
@@ -179,7 +191,7 @@ export default function Reports() {
     if (key === "view") next.delete("table");
     setParams(next, { replace: true });
   };
-  async function download(kind: "csv" | "power-query") {
+  async function download(kind: "csv" | "power-query" | "power-bi") {
     if (!selected || !selectedTable) return;
     setDownloading(kind);
     setExportError(undefined);
@@ -192,7 +204,7 @@ export default function Reports() {
         table: selectedTable.id,
       });
       const response = await fetch(
-        `/api/reports/${kind === "csv" ? `datasets/${selected.id}` : "power-query"}?${filters}`,
+        `/api/reports/${kind === "csv" ? `datasets/${selected.id}` : kind}?${filters}`,
         { credentials: "include" },
       );
       if (!response.ok) {
@@ -207,10 +219,19 @@ export default function Reports() {
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`;
+      anchor.download =
+        kind === "power-bi"
+          ? `VS-PartnerHub-Power-BI-${to}.zip`
+          : `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`;
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast(kind === "csv" ? "Report exported" : "Power Query file downloaded");
+      toast(
+        kind === "csv"
+          ? "Report exported"
+          : kind === "power-bi"
+            ? "Power BI project downloaded"
+            : "Power Query file downloaded",
+      );
     } catch (e) {
       setExportError(e);
     } finally {
@@ -230,12 +251,25 @@ export default function Reports() {
     });
   }
   return (
-    <div className="analytics-page">
+    <div
+      className={`analytics-page${powerBiPreview ? " bi-preview-page" : ""}`}
+    >
       <PageHeader
         eyebrow="BUSINESS INTELLIGENCE"
-        title="Reports & analytics"
-        description="Understand the numbers. Follow the evidence. Move your business forward."
+        title={powerBiPreview ? "Power BI preview" : "Reports & analytics"}
+        description={
+          powerBiPreview
+            ? "Your business dashboards, ready for Power BI Desktop."
+            : "Understand the numbers. Follow the evidence. Move your business forward."
+        }
       >
+        <Button
+          variant="secondary"
+          onClick={() => showPowerBi(!powerBiPreview)}
+        >
+          {powerBiPreview ? <ArrowLeft size={16} /> : <BarChart3 size={16} />}
+          {powerBiPreview ? "Reports" : "Power BI preview"}
+        </Button>
         <Button
           variant="secondary"
           onClick={() => report.refetch()}
@@ -243,82 +277,129 @@ export default function Reports() {
           aria-label="Refresh reports"
         >
           <RefreshCw size={16} />
-          Refresh
+          <span className={powerBiPreview ? "bi-refresh-label" : undefined}>
+            Refresh
+          </span>
         </Button>
         <Button
           disabled={!selected}
+          busy={powerBiPreview && downloading === "power-bi"}
+          aria-label={powerBiPreview ? "Download Power BI project" : undefined}
           onClick={() => {
+            if (powerBiPreview) {
+              void download("power-bi");
+              return;
+            }
             setExportError(undefined);
             setExportOpen(true);
           }}
         >
           <ArrowDownToLine size={17} />
-          Export & connect
+          {powerBiPreview ? (
+            <>
+              <span className="bi-download-full">
+                Download Power BI project
+              </span>
+              <span className="bi-download-short">Download</span>
+            </>
+          ) : (
+            "Export & connect"
+          )}
         </Button>
       </PageHeader>
-      <form
-        className="card analytics-filters"
-        onSubmit={apply}
-        aria-label="Reporting period"
-      >
-        <div className="analytics-filter-heading">
-          <CalendarDays size={19} />
-          <span>
-            Reporting period<small>Record creation dates · UTC</small>
-          </span>
-        </div>
-        <Field label="From date">
-          <Input
-            type="date"
-            required
-            value={draft.from}
-            onChange={(e) => setDraft({ ...draft, from: e.target.value })}
-          />
-        </Field>
-        <Field label="To date">
-          <Input
-            type="date"
-            required
-            value={draft.to}
-            onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-          />
-        </Field>
-        <Field label="Reporting currency">
-          <select
-            className="input"
-            value={draft.currency}
-            onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
-          >
-            {["INR", "USD", "EUR", "GBP"].map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </Field>
-        <Button type="submit" variant="secondary">
-          Apply filters
-        </Button>
+      {powerBiPreview && (
         <button
-          className="text-button analytics-reset"
+          className="bi-filters-toggle"
           type="button"
-          onClick={() =>
-            apply(undefined, {
-              from: dateInput(-179),
-              to: dateInput(),
-              currency: "INR",
-            })
-          }
+          aria-expanded={biFiltersOpen}
+          aria-controls={biFiltersId}
+          onClick={() => setBiFiltersOpen(!biFiltersOpen)}
         >
-          Last 180 days
+          <CalendarDays size={17} />
+          <span>
+            <strong>Period & currency</strong>
+            <small>
+              {formatDate(from)} – {formatDate(to)} · {currency}
+            </small>
+          </span>
+          <ChevronRight size={17} />
         </button>
-      </form>
+      )}
+      <div id={biFiltersId} hidden={powerBiPreview && !biFiltersOpen}>
+        <form
+          className="card analytics-filters"
+          onSubmit={apply}
+          aria-label="Reporting period"
+        >
+          <div className="analytics-filter-heading">
+            <CalendarDays size={19} />
+            <span>
+              Reporting period<small>Record creation dates · UTC</small>
+            </span>
+          </div>
+          <Field label="From date">
+            <Input
+              type="date"
+              required
+              value={draft.from}
+              onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+            />
+          </Field>
+          <Field label="To date">
+            <Input
+              type="date"
+              required
+              value={draft.to}
+              onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+            />
+          </Field>
+          <Field label="Reporting currency">
+            <select
+              className="input"
+              value={draft.currency}
+              onChange={(e) => setDraft({ ...draft, currency: e.target.value })}
+            >
+              {["INR", "USD", "EUR", "GBP"].map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+          <Button type="submit" variant="secondary">
+            Apply filters
+          </Button>
+          <button
+            className="text-button analytics-reset"
+            type="button"
+            onClick={() =>
+              apply(undefined, {
+                from: dateInput(-179),
+                to: dateInput(),
+                currency: "INR",
+              })
+            }
+          >
+            Last 180 days
+          </button>
+        </form>
+      </div>
       <FormError error={filterError} />
+      {powerBiPreview && <FormError error={exportError} />}
       {report.isPending ? (
         <Loading label="Preparing your reports…" />
       ) : report.error ? (
         <ErrorState error={report.error} retry={() => report.refetch()} />
       ) : (
         report.data &&
-        selected && (
+        selected &&
+        (powerBiPreview && selectedTable ? (
+          <PowerBiPreview
+            report={report.data}
+            view={selected}
+            table={selectedTable}
+            onView={(id) => select("view", id)}
+            onTable={(id) => select("table", id)}
+          />
+        ) : (
           <>
             <nav className="analytics-nav" aria-label="Report categories">
               {report.data.views.map((v) => {
@@ -483,7 +564,7 @@ export default function Reports() {
               )}
             </section>
           </>
-        )
+        ))
       )}
       {definition && (
         <Modal
@@ -535,6 +616,38 @@ export default function Reports() {
               this dataset.
             </p>
             <FormError error={exportError} />
+            <button
+              className="analytics-export-option"
+              disabled={!!downloading}
+              onClick={() => download("power-bi")}
+            >
+              <BarChart3 size={24} />
+              <span>
+                <strong>
+                  {downloading === "power-bi"
+                    ? "Preparing Power BI project…"
+                    : "Download Power BI dashboards"}
+                </strong>
+                <small>
+                  Dashboard pages, formatted KPIs, charts, datasets and optional
+                  API refresh.
+                </small>
+              </span>
+              <ArrowDownToLine size={18} />
+            </button>
+            <button
+              className="analytics-export-option"
+              onClick={() => showPowerBi(true)}
+            >
+              <LayoutDashboard size={24} />
+              <span>
+                <strong>Preview the Power BI workspace</strong>
+                <small>
+                  Browse every permitted dashboard before downloading.
+                </small>
+              </span>
+              <ArrowUpRight size={18} />
+            </button>
             <button
               className="analytics-export-option"
               disabled={!!downloading}

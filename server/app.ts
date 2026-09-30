@@ -63,9 +63,16 @@ export function createApp() {
     }),
   );
   app.get("/api/health", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
     try {
       await db.raw("select 1");
-      res.json({ status: "ok", service: "VS PartnerHub" });
+      const revision =
+        process.env.VERCEL_GIT_COMMIT_SHA || process.env.APP_REVISION;
+      res.json({
+        status: "ok",
+        service: "VS PartnerHub",
+        ...(revision && /^[a-f0-9]{40}$/i.test(revision) ? { revision } : {}),
+      });
     } catch {
       res.status(503).json({ status: "unavailable" });
     }

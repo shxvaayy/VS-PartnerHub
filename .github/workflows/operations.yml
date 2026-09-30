@@ -1,0 +1,69 @@
+name: PartnerHub operations
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+    - cron: "43 * * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: partnerhub-operations-${{ github.event.schedule || 'manual' }}
+  cancel-in-progress: false
+
+env:
+  PARTNERHUB_APP_URL: https://vs-partnerhub.vercel.app
+
+jobs:
+  recovery:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 3 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Install PostgreSQL recovery tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-18
+          echo "PG_BIN=/usr/lib/postgresql/18/bin" >> "$GITHUB_ENV"
+      - name: Capture encrypted live data and verify an isolated restore
+        run: node --import tsx scripts/automated-recovery.mjs
+        env:
+          PARTNERHUB_RECOVERY_DATABASE_URL: ${{ secrets.PARTNERHUB_RECOVERY_DATABASE_URL }}
+          PARTNERHUB_RECOVERY_BLOB_TOKEN: ${{ secrets.PARTNERHUB_RECOVERY_BLOB_TOKEN }}
+          PARTNERHUB_RECOVERY_KEY: ${{ secrets.PARTNERHUB_RECOVERY_KEY }}
+      - name: Retain the verified encrypted off-site backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: partnerhub-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/operations/recovery/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Remove captured files from the runner
+        if: always()
+        run: rm -rf artifacts/operations/recovery
+
+  health:
+    needs: recovery
+    if: always() && (needs.recovery.result == 'success' || needs.recovery.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check live HTTPS, database and retained backup freshness
+        run: node scripts/operations-health.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

@@ -15,6 +15,7 @@ const { values } = parseArgs({
     input: { type: "string" },
     key: { type: "string" },
     credentials: { type: "string" },
+    "data-only": { type: "boolean" },
     output: {
       type: "string",
       default: "artifacts/recovery-verification/restore.json",
@@ -22,12 +23,17 @@ const { values } = parseArgs({
   },
 });
 assert(
-  values.fixture || (values.input && values.key && values.credentials),
-  "Use --fixture or provide --input, --key and --credentials (private JSON with email/password).",
+  values.fixture ||
+    (values.input && values.key && (values.credentials || values["data-only"])),
+  "Use --fixture, or --input and --key with either --credentials or --data-only.",
 );
 assert(
   !(values.fixture && (values.input || values.key || values.credentials)),
   "Do not mix synthetic-fixture and existing-backup modes.",
+);
+assert(
+  !(values["data-only"] && values.credentials),
+  "Choose data-only verification or an authenticated application drill.",
 );
 const root = await fs.mkdtemp(path.join(tmpdir(), "partnerhub-restore-drill-"));
 await fs.chmod(root, 0o700);
@@ -202,7 +208,7 @@ try {
       email: demoAccounts.find((account) => account.key === "admin").email,
       password: demoPassword,
     };
-  } else
+  } else if (!values["data-only"])
     credentials = JSON.parse(await fs.readFile(values.credentials, "utf8"));
   const destination = path.join(root, "restore");
   command(
@@ -333,184 +339,200 @@ try {
         );
     },
   );
-  const recordRows = (
-    await sql.query(
-      "SELECT DISTINCT ON (kind) id, kind, title, status, number FROM records ORDER BY kind, created_at DESC",
-    )
-  ).rows;
-  if (!recordRows.length)
+  if (values["data-only"]) {
     limitations.push(
-      "This source snapshot has no business transactions. Record-chain restoration is covered separately with isolated fixtures, not claimed for absent production records.",
+      "Automated data recovery verifies the authenticated archive, every table count, valid indexes and all private-file references and hashes. It does not sign into a restored account or certify business APIs.",
     );
-  if (!docs.length)
-    limitations.push(
-      "This source snapshot contains no finalized documents to download.",
-    );
-  if (!logos.length)
-    limitations.push(
-      "This source snapshot contains no organization logos; logo-byte recovery is covered by the regression fixture.",
-    );
-  // Disable cloned outbound credentials/queues AFTER comparing the original
-  // snapshot. Do not modify the original encrypted archive or live database.
-  await sql.query("BEGIN");
-  try {
-    for (const table of [
-      "integration_settings",
-      "email_outbox",
-      "webhook_deliveries",
-      "sessions",
-      "auth_tokens",
-      "auth_attempts",
-      "document_uploads",
-      "job_leases",
-    ])
-      await sql.query(`DELETE FROM ${quote(table)}`);
-    await sql.query("UPDATE webhook_endpoints SET active = false");
-    await sql.query("UPDATE integration_tokens SET active = false");
-    await sql.query("COMMIT");
-  } catch (error) {
-    await sql.query("ROLLBACK");
-    throw error;
-  }
-  Object.assign(process.env, isolatedEnv);
-  const { createApp } = await import("../server/app.ts");
-  const { db } = await import("../server/db.ts");
-  appDb = db;
-  const app = createApp(); // Intentionally never import server/index.ts or run maintenance.
-  server = await new Promise((resolve, reject) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-    listener.once("error", reject);
-  });
-  base = `http://127.0.0.1:${server.address().port}`;
-  globalThis.fetch = async (input, init) => {
-    const address =
-      typeof input === "string" || input instanceof URL
-        ? new URL(input)
-        : new URL(input.url);
-    if (address.origin !== base) {
-      blockedRequests.push(address.origin);
-      throw new Error(
-        "External HTTP delivery is disabled in the recovery drill.",
+  } else {
+    const recordRows = (
+      await sql.query(
+        "SELECT DISTINCT ON (kind) id, kind, title, status, number FROM records ORDER BY kind, created_at DESC",
+      )
+    ).rows;
+    if (!recordRows.length)
+      limitations.push(
+        "This source snapshot has no business transactions. Record-chain restoration is covered separately with isolated fixtures, not claimed for absent production records.",
       );
-    }
-    return nativeFetch(input, init);
-  };
-  let headers, account;
-  await check(
-    "Restored application health and existing password login",
-    async () => {
-      assert.equal((await fetch(base + "/api/health")).status, 200);
-      const response = await fetch(base + "/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Origin: isolatedEnv.APP_URL,
-        },
-        body: JSON.stringify(credentials),
-      });
-      assert.equal(
-        response.status,
-        200,
-        "The supplied existing account must sign into the restored database. MFA delivery stays disabled in a drill.",
+    if (!docs.length)
+      limitations.push(
+        "This source snapshot contains no finalized documents to download.",
       );
-      account = await response.json();
-      assert.equal(
-        Boolean(account.requiresOtp),
-        false,
-        "Use an authorized password account; do not bypass MFA or enable outbound email for a rehearsal.",
+    if (!logos.length)
+      limitations.push(
+        "This source snapshot contains no organization logos; logo-byte recovery is covered by the regression fixture.",
       );
-      assert(
-        account.user?.internal &&
-          account.user?.permissions?.audit?.includes("view"),
-        "Use an authorized internal review account.",
-      );
-      const cookie = response.headers.get("set-cookie");
-      assert(cookie?.includes("Secure"));
-      headers = {
-        Cookie: cookie.split(";")[0],
-        Origin: isolatedEnv.APP_URL,
-        "X-CSRF-Token": account.csrfToken,
-      };
-      const session = await (
-        await fetch(base + "/api/auth/session", { headers })
-      ).json();
-      assert.equal(session.user.id, account.user.id);
-      const role = (
-        await sql.query("SELECT permissions FROM roles WHERE id = $1", [
-          account.user.role,
-        ])
-      ).rows[0];
-      assert.deepEqual(account.user.permissions, JSON.parse(role.permissions));
-    },
-  );
-  await check(
-    "Dashboard, document list and audit API read restored data",
-    async () => {
-      for (const route of [
-        "/api/dashboard",
-        "/api/documents",
-        "/api/admin/audit",
+    // Disable cloned outbound credentials/queues AFTER comparing the original
+    // snapshot. Do not modify the original encrypted archive or live database.
+    await sql.query("BEGIN");
+    try {
+      for (const table of [
+        "integration_settings",
+        "email_outbox",
+        "webhook_deliveries",
+        "sessions",
+        "auth_tokens",
+        "auth_attempts",
+        "document_uploads",
+        "job_leases",
       ])
-        assert.equal(
-          (await fetch(base + route, { headers })).status,
-          200,
-          `Restored API failed: ${route}`,
-        );
-    },
-  );
-  for (const record of recordRows) {
-    if (!account.user.permissions[record.kind]?.includes("view")) continue;
-    await check(`Restored ${record.kind} record and history API`, async () => {
-      const response = await fetch(
-        `${base}/api/records/${record.kind}/${record.id}`,
-        { headers },
-      );
-      assert.equal(response.status, 200);
-      const item = await response.json();
-      for (const field of ["id", "number", "title", "status"])
-        assert.equal(item[field], record[field]);
-      assert.equal(
-        (
-          await fetch(
-            `${base}/api/records/${record.kind}/${record.id}/history`,
-            { headers },
-          )
-        ).status,
-        200,
-      );
+        await sql.query(`DELETE FROM ${quote(table)}`);
+      await sql.query("UPDATE webhook_endpoints SET active = false");
+      await sql.query("UPDATE integration_tokens SET active = false");
+      await sql.query("COMMIT");
+    } catch (error) {
+      await sql.query("ROLLBACK");
+      throw error;
+    }
+    Object.assign(process.env, isolatedEnv);
+    const { createApp } = await import("../server/app.ts");
+    const { db } = await import("../server/db.ts");
+    appDb = db;
+    const app = createApp(); // Intentionally never import server/index.ts or run maintenance.
+    server = await new Promise((resolve, reject) => {
+      const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+      listener.once("error", reject);
     });
-  }
-  if (docs.length)
+    base = `http://127.0.0.1:${server.address().port}`;
+    globalThis.fetch = async (input, init) => {
+      const address =
+        typeof input === "string" || input instanceof URL
+          ? new URL(input)
+          : new URL(input.url);
+      if (address.origin !== base) {
+        blockedRequests.push(address.origin);
+        throw new Error(
+          "External HTTP delivery is disabled in the recovery drill.",
+        );
+      }
+      return nativeFetch(input, init);
+    };
+    let headers, account;
     await check(
-      "Authorized private downloads match backup hashes; anonymous requests are denied",
+      "Restored application health and existing password login",
       async () => {
-        for (const document of docs) {
-          const route = `${base}/api/documents/${document.id}/download`;
-          assert.equal((await fetch(route)).status, 401);
-          const response = await fetch(route, { headers });
-          assert.equal(response.status, 200);
-          const bytes = Buffer.from(await response.arrayBuffer());
-          const expected = manifest.files.find(
-            (file) => file.key === document.storage_key,
-          );
-          assert.equal(bytes.length, expected.size);
-          assert.equal(hash(bytes), expected.sha256);
-        }
+        assert.equal((await fetch(base + "/api/health")).status, 200);
+        const response = await fetch(base + "/api/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: isolatedEnv.APP_URL,
+          },
+          body: JSON.stringify(credentials),
+        });
+        assert.equal(
+          response.status,
+          200,
+          "The supplied existing account must sign into the restored database. MFA delivery stays disabled in a drill.",
+        );
+        account = await response.json();
+        assert.equal(
+          Boolean(account.requiresOtp),
+          false,
+          "Use an authorized password account; do not bypass MFA or enable outbound email for a rehearsal.",
+        );
+        assert(
+          account.user?.internal &&
+            account.user?.permissions?.audit?.includes("view"),
+          "Use an authorized internal review account.",
+        );
+        const cookie = response.headers.get("set-cookie");
+        assert(cookie?.includes("Secure"));
+        headers = {
+          Cookie: cookie.split(";")[0],
+          Origin: isolatedEnv.APP_URL,
+          "X-CSRF-Token": account.csrfToken,
+        };
+        const session = await (
+          await fetch(base + "/api/auth/session", { headers })
+        ).json();
+        assert.equal(session.user.id, account.user.id);
+        const role = (
+          await sql.query("SELECT permissions FROM roles WHERE id = $1", [
+            account.user.role,
+          ])
+        ).rows[0];
+        assert.deepEqual(
+          account.user.permissions,
+          JSON.parse(role.permissions),
+        );
       },
     );
-  await check(
-    "No external delivery or scheduled maintenance ran during the rehearsal",
-    async () => {
-      assert.deepEqual(blockedRequests, []);
-      for (const table of ["email_outbox", "webhook_deliveries", "job_leases"])
-        assert.equal(
-          (await sql.query(`SELECT count(*)::int AS n FROM ${quote(table)}`))
-            .rows[0].n,
-          0,
-        );
-      assert.equal((await fetch(base + "/api/jobs/maintenance")).status, 401);
-    },
-  );
+    await check(
+      "Dashboard, document list and audit API read restored data",
+      async () => {
+        for (const route of [
+          "/api/dashboard",
+          "/api/documents",
+          "/api/admin/audit",
+        ])
+          assert.equal(
+            (await fetch(base + route, { headers })).status,
+            200,
+            `Restored API failed: ${route}`,
+          );
+      },
+    );
+    for (const record of recordRows) {
+      if (!account.user.permissions[record.kind]?.includes("view")) continue;
+      await check(
+        `Restored ${record.kind} record and history API`,
+        async () => {
+          const response = await fetch(
+            `${base}/api/records/${record.kind}/${record.id}`,
+            { headers },
+          );
+          assert.equal(response.status, 200);
+          const item = await response.json();
+          for (const field of ["id", "number", "title", "status"])
+            assert.equal(item[field], record[field]);
+          assert.equal(
+            (
+              await fetch(
+                `${base}/api/records/${record.kind}/${record.id}/history`,
+                { headers },
+              )
+            ).status,
+            200,
+          );
+        },
+      );
+    }
+    if (docs.length)
+      await check(
+        "Authorized private downloads match backup hashes; anonymous requests are denied",
+        async () => {
+          for (const document of docs) {
+            const route = `${base}/api/documents/${document.id}/download`;
+            assert.equal((await fetch(route)).status, 401);
+            const response = await fetch(route, { headers });
+            assert.equal(response.status, 200);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            const expected = manifest.files.find(
+              (file) => file.key === document.storage_key,
+            );
+            assert.equal(bytes.length, expected.size);
+            assert.equal(hash(bytes), expected.sha256);
+          }
+        },
+      );
+    await check(
+      "No external delivery or scheduled maintenance ran during the rehearsal",
+      async () => {
+        assert.deepEqual(blockedRequests, []);
+        for (const table of [
+          "email_outbox",
+          "webhook_deliveries",
+          "job_leases",
+        ])
+          assert.equal(
+            (await sql.query(`SELECT count(*)::int AS n FROM ${quote(table)}`))
+              .rows[0].n,
+            0,
+          );
+        assert.equal((await fetch(base + "/api/jobs/maintenance")).status, 401);
+      },
+    );
+  }
 } catch (error) {
   checks.push({
     name: "Isolated PostgreSQL restore drill",
@@ -537,6 +559,7 @@ try {
       : "Existing encrypted PostgreSQL/private-file snapshot",
     fixtureBackupMs,
     sourceRevision: manifest?.revision,
+    verificationMode: values["data-only"] ? "data-only" : "application",
     productionMutations: false,
     temporaryRestoreRemoved: true,
     outboundDeliveryDisabled: true,
@@ -550,7 +573,7 @@ try {
     failed: checks.filter((item) => !item.passed).length,
     limitations: [
       ...limitations,
-      "Local isolated recovery measurement, not an off-site recovery SLA or configured backup schedule.",
+      "This isolated restore report measures the supplied archive. Scheduling, off-site publication and freshness are verified separately by the operations workflow.",
     ],
   };
   await fs.mkdir(path.dirname(values.output), { recursive: true });

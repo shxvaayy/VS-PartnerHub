@@ -13,6 +13,7 @@ import {
 import { audit } from "./events.js";
 import { csv } from "./records.js";
 import { date } from "./validation.js";
+import { powerBiArchive } from "./bi-exports.js";
 import {
   label,
   modules,
@@ -1629,6 +1630,26 @@ export const reportsRouter = Router();
 reportsRouter.use(authenticated, permit("reports"));
 reportsRouter.get("/analytics", analyticsHandler);
 reportsRouter.get("/datasets/:view", datasetHandler);
+reportsRouter.get("/power-bi", async (req, res) => {
+  const report = await buildAnalytics(
+    req.user,
+    analyticsFilters.parse(req.query),
+  );
+  const archive = powerBiArchive(report, config.appUrl);
+  await audit(
+    db,
+    req.user,
+    "power_bi_workspace_exported",
+    "reports",
+    undefined,
+    undefined,
+    `${report.views.length} permitted dashboards; ${report.from} through ${report.to}; ${report.currency}`,
+  );
+  res
+    .type("application/zip")
+    .attachment(`VS-PartnerHub-Power-BI-${report.to}.zip`)
+    .send(archive);
+});
 reportsRouter.get("/power-query", async (req, res) => {
   const view = z.enum(reportViews).default("executive").parse(req.query.view);
   const table = z

@@ -35,11 +35,12 @@ Select a KPI's information button to read its exact calculation. Charts link to 
 
 ## API and dataset contract
 
-| Method | Browser session route         | Purpose                                                |
-| ------ | ----------------------------- | ------------------------------------------------------ |
-| GET    | `/api/reports/analytics`      | All permitted report views and definitions             |
-| GET    | `/api/reports/datasets/:view` | One CSV dataset                                        |
-| GET    | `/api/reports/power-query`    | A Power Query function with the chosen report settings |
+| Method | Browser session route         | Purpose                                                      |
+| ------ | ----------------------------- | ------------------------------------------------------------ |
+| GET    | `/api/reports/analytics`      | All permitted report views and definitions                   |
+| GET    | `/api/reports/datasets/:view` | One CSV dataset                                              |
+| GET    | `/api/reports/power-query`    | A Power Query function with the chosen report settings       |
+| GET    | `/api/reports/power-bi`       | Editable Power BI dashboard project ZIP with authorized data |
 
 Filters are `from=YYYY-MM-DD`, `to=YYYY-MM-DD` and `currency=INR|USD|EUR|GBP`. The maximum period is ten years. View IDs are `executive`, `partners`, `procurement`, `performance`, `recruitment`, `finance`, `compliance` and `support`. Table IDs are `summary`, `metrics`, `trend`, `distribution`, plus `aging` for Finance and `verification` for Partners where authorized.
 
@@ -57,7 +58,17 @@ Authorization: Bearer <your stored integration token>
 
 Create a token under **Integrations → Business systems & reporting**. Select `reports` and only the necessary source scopes. For example, Finance requires `reports`, `invoices` and `payments`; Compliance uses `reports`, `documents` and `organizations` for policy coverage. Sources are intersected with the creator's current permissions on every request. Expired/revoked tokens and inactive owners are rejected. A reports-only token cannot obtain data. Unpermitted metrics/columns are omitted rather than returned as misleading zeroes.
 
-## Power BI and Excel Power Query
+## Power BI dashboard preview and project
+
+Open **Reports → Power BI preview**, or use [the direct preview link](https://vs-partnerhub.vercel.app/app/reports?presentation=power-bi). This is PartnerHub's interactive export preview: it uses the signed-in user's actual permitted data and does not impersonate a published Microsoft-service report. It includes dashboard navigation, KPI calculation dialogs, trends, distributions and searchable datasets. Date, currency and selected-page filters survive direct links and navigation. Mobile KPI cards abbreviate large amounts; their calculation dialogs and the All KPIs list show exact values.
+
+Choose **Download Power BI project** to receive an editable `.pbip` project, eight dashboard definitions when all sources are authorized, a Tabular semantic model, a branded theme and the authorized snapshot. Extract the whole ZIP, open `VS PartnerHub.pbip` in a current Power BI Desktop release and select **Refresh** once. The included snapshot needs no API token. Money and percentages are formatted in KPI cards and the All KPIs table; detail datasets retain their documented source units.
+
+To refresh from the API, set the initially blank `PartnerHubAccessToken` parameter to an expiring Reports integration token with the required source scopes. Configure the HTTPS source as Anonymous because Power Query supplies its explicit bearer header. Refresh uses current permissions and the exported reporting period; an expired token or a removed source permission fails instead of presenting the snapshot as fresh data. Configured tokens belong in private BI credential management and should not be included when sharing the project.
+
+Exports are audited as `power_bi_workspace_exported`. The export tests validate Microsoft's published project/report/page/visual schemas, model references, non-overlapping visual positions, permitted datasets and unit conversion. Browser tests verify every dashboard, downloads, accessibility and mobile navigation. Native Power BI Desktop rendering and Microsoft-service publication are separate acceptance steps; neither is represented as executed by the browser preview.
+
+## Custom Power BI and Excel Power Query models
 
 1. In Reports, choose a view, reporting period, currency and export dataset. Select **Export & connect → Connect Power BI / Power Query**.
 2. Create an appropriately scoped, expiring integration token. Keep its one-time value in the approved BI credential configuration.
