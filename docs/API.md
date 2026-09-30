@@ -99,29 +99,30 @@ Input monetary values are major currency units. Returned `amount_minor`/`outstan
 
 ## Administration, reporting and notifications
 
-| Method      | Path                            | Purpose                                                             |
-| ----------- | ------------------------------- | ------------------------------------------------------------------- |
-| GET         | `/dashboard`                    | Scoped KPIs, charts and activity; date/currency filters             |
-| GET         | `/search?q=...`                 | Scoped global search                                                |
-| GET         | `/reports/export`               | Management summary CSV                                              |
-| GET         | `/reports/analytics`            | Eight report views, scoped KPI definitions and datasets             |
-| GET         | `/reports/datasets/:view`       | Audited aggregate CSV; `table`, date and currency filters           |
-| GET         | `/reports/power-query`          | Power Query function with no embedded credentials                   |
-| GET         | `/reports/power-bi`             | Audited Power BI project ZIP with permitted dashboards and snapshot |
-| GET         | `/notifications`                | Current user's notifications                                        |
-| POST        | `/notifications/:id/read`       | Mark user's notification read                                       |
-| POST        | `/notifications/read-all`       | Mark all user's notifications read                                  |
-| GET         | `/admin/team`                   | Authorized users and pending invitations                            |
-| POST        | `/admin/team/invite`            | `{ name, email, role, organization_id? }`                           |
-| PATCH       | `/admin/team/:id`               | Authorized name/role/active-state updates                           |
-| DELETE      | `/admin/team/invitations/:id`   | Revoke pending invitation                                           |
-| GET         | `/admin/roles`                  | Role permission definitions                                         |
-| PATCH       | `/admin/roles/:id`              | Change a permitted role's permission matrix                         |
-| GET / PATCH | `/admin/settings`               | Read settings / Super Admin updates                                 |
-| GET         | `/admin/audit`                  | Paginated, filtered audit history                                   |
-| GET         | `/admin/organizations-export`   | Authorized organization directory CSV                               |
-| GET         | `/admin/email-status`           | Delivery metadata; no message bodies or secrets                     |
-| POST        | `/admin/email-status/:id/retry` | Queue a failed email again                                          |
+| Method      | Path                            | Purpose                                                                  |
+| ----------- | ------------------------------- | ------------------------------------------------------------------------ |
+| GET         | `/dashboard`                    | Scoped KPIs, charts and activity; date/currency filters                  |
+| GET         | `/search?q=...`                 | Scoped global search                                                     |
+| GET         | `/reports/export`               | Management summary CSV                                                   |
+| GET         | `/reports/analytics`            | Eight report views, scoped KPI definitions and datasets                  |
+| GET         | `/reports/datasets/:view`       | Audited aggregate CSV; `table`, date and currency filters                |
+| GET         | `/reports/power-query`          | Power Query function with no embedded credentials                        |
+| GET         | `/reports/power-bi`             | Audited Power BI project ZIP with permitted dashboards and snapshot      |
+| GET         | `/reports/tableau`              | Audited Tableau `.twbx` with permitted dashboards and local data sources |
+| GET         | `/notifications`                | Current user's notifications                                             |
+| POST        | `/notifications/:id/read`       | Mark user's notification read                                            |
+| POST        | `/notifications/read-all`       | Mark all user's notifications read                                       |
+| GET         | `/admin/team`                   | Authorized users and pending invitations                                 |
+| POST        | `/admin/team/invite`            | `{ name, email, role, organization_id? }`                                |
+| PATCH       | `/admin/team/:id`               | Authorized name/role/active-state updates                                |
+| DELETE      | `/admin/team/invitations/:id`   | Revoke pending invitation                                                |
+| GET         | `/admin/roles`                  | Role permission definitions                                              |
+| PATCH       | `/admin/roles/:id`              | Change a permitted role's permission matrix                              |
+| GET / PATCH | `/admin/settings`               | Read settings / Super Admin updates                                      |
+| GET         | `/admin/audit`                  | Paginated, filtered audit history                                        |
+| GET         | `/admin/organizations-export`   | Authorized organization directory CSV                                    |
+| GET         | `/admin/email-status`           | Delivery metadata; no message bodies or secrets                          |
+| POST        | `/admin/email-status/:id/retry` | Queue a failed email again                                               |
 
 All routes enforce server-side role and tenant scope. Administrative settings/roles/users cannot grant an external organization internal VS privileges.
 

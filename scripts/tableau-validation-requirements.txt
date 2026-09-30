@@ -1,0 +1,3 @@
+tableaudocumentapi==0.11
+lxml==6.1.3
+setuptools==80.9.0

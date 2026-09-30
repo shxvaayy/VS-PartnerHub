@@ -665,58 +665,82 @@ export function analyticsCases(h: any) {
           .first(),
       ).toMatchObject({ n: expect.anything() });
     });
-    it("downloads authorized Power BI dashboards without exposing another organization's data or creating access tokens", async () => {
-      const binary = (response: any, done: any) => {
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
-        response.once("end", () => done(null, Buffer.concat(chunks)));
-        response.once("error", done);
-      };
-      expect((await supertest(h.app).get("/api/reports/power-bi")).status).toBe(
-        401,
-      );
-      expect(
-        (await h.clients.support.agent.get("/api/reports/power-bi")).status,
-      ).toBe(403);
-      const before = await h.db("integration_tokens").count({ n: "*" }).first();
-      const expected = await report();
-      const response = await buyer.agent
-        .get(`/api/reports/power-bi?${query}`)
-        .buffer(true)
-        .parse(binary);
-      expect(response.status).toBe(200);
-      expect(response.headers["content-type"]).toContain("application/zip");
-      const files = unzipSync(response.body);
-      const snapshot = JSON.parse(strFromU8(files["data/analytics.json"]));
-      expect(snapshot.views).toEqual(expected.views);
-      expect(JSON.stringify(snapshot)).not.toMatch(
-        /candidate-private|password_hash|phk_/,
-      );
-      const after = await h.db("integration_tokens").count({ n: "*" }).first();
-      expect(after.n).toEqual(before.n);
-      expect(
-        await h
-          .db("audit_logs")
-          .where({
-            user_id: buyer.user.id,
-            action: "power_bi_workspace_exported",
-          })
-          .first(),
-      ).toBeTruthy();
-      const hr = await h.clients.hr.agent
-        .get(`/api/reports/power-bi?${query}`)
-        .buffer(true)
-        .parse(binary);
-      expect(hr.status).toBe(200);
-      const hrFiles = unzipSync(hr.body);
-      const hrSnapshot = JSON.parse(strFromU8(hrFiles["data/analytics.json"]));
-      expect(hrSnapshot.views.some((view: any) => view.id === "finance")).toBe(
-        false,
-      );
-      expect(
-        Object.keys(hrFiles).some((name) => name.includes("/finance/")),
-      ).toBe(false);
-    });
+    it.each(["power-bi", "tableau"])(
+      "downloads authorized %s dashboards without exposing another organization's data or creating access tokens",
+      async (kind) => {
+        const binary = (response: any, done: any) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) =>
+            chunks.push(Buffer.from(chunk)),
+          );
+          response.once("end", () => done(null, Buffer.concat(chunks)));
+          response.once("error", done);
+        };
+        expect(
+          (await supertest(h.app).get(`/api/reports/${kind}`)).status,
+        ).toBe(401);
+        expect(
+          (await h.clients.support.agent.get(`/api/reports/${kind}`)).status,
+        ).toBe(403);
+        const before = await h
+          .db("integration_tokens")
+          .count({ n: "*" })
+          .first();
+        const expected = await report();
+        const response = await buyer.agent
+          .get(`/api/reports/${kind}?${query}`)
+          .buffer(true)
+          .parse(binary);
+        expect(response.status).toBe(200);
+        expect(response.headers["content-type"]).toContain(
+          kind === "tableau" ? "application/octet-stream" : "application/zip",
+        );
+        expect(response.headers["content-disposition"]).toContain(
+          kind === "tableau" ? ".twbx" : ".zip",
+        );
+        const files = unzipSync(response.body);
+        const snapshotPath =
+          kind === "tableau" ? "Data/analytics.json" : "data/analytics.json";
+        const snapshot = JSON.parse(strFromU8(files[snapshotPath]));
+        expect(snapshot.views).toEqual(expected.views);
+        expect(JSON.stringify(snapshot)).not.toMatch(
+          /candidate-private|password_hash|phk_/,
+        );
+        const after = await h
+          .db("integration_tokens")
+          .count({ n: "*" })
+          .first();
+        expect(after.n).toEqual(before.n);
+        expect(
+          await h
+            .db("audit_logs")
+            .where({
+              user_id: buyer.user.id,
+              action:
+                kind === "tableau"
+                  ? "tableau_workspace_exported"
+                  : "power_bi_workspace_exported",
+            })
+            .first(),
+        ).toBeTruthy();
+        const hr = await h.clients.hr.agent
+          .get(`/api/reports/${kind}?${query}`)
+          .buffer(true)
+          .parse(binary);
+        expect(hr.status).toBe(200);
+        const hrFiles = unzipSync(hr.body);
+        const hrSnapshot = JSON.parse(strFromU8(hrFiles[snapshotPath]));
+        expect(
+          hrSnapshot.views.some((view: any) => view.id === "finance"),
+        ).toBe(false);
+        expect(
+          Object.keys(hrFiles).some(
+            (name) =>
+              name.includes("/finance/") || name.startsWith("Data/finance_"),
+          ),
+        ).toBe(false);
+      },
+    );
     it("intersects BI token scopes with current permissions, including revocation and expiry", async () => {
       const invoicesOnly = await token(buyer, ["reports", "invoices"]);
       let response = await integrationReport(invoicesOnly.token);

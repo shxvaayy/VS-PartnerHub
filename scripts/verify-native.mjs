@@ -25,6 +25,7 @@ const run = (command, args) =>
     maxBuffer: 16 * 1024 * 1024,
   });
 let simulator, derivedData;
+const reuseIosBuild = process.env.NATIVE_IOS_REUSE_BUILD === "true";
 function verifyConfig(config) {
   assert.equal(config.appId, applicationId);
   assert.equal(config.appName, "VS PartnerHub");
@@ -152,7 +153,12 @@ try {
     }
     assert(device, "An available iPhone simulator is required.");
     simulator = device.udid;
-    derivedData = path.resolve(".local", `native-ios-derived-${process.pid}`);
+    derivedData = path.resolve(
+      ".local",
+      reuseIosBuild
+        ? "native-ios-derived"
+        : `native-ios-derived-${process.pid}`,
+    );
     await fs.mkdir(derivedData, { recursive: true });
     await commandLog(
       "xcodebuild",
@@ -262,7 +268,6 @@ try {
         2,
       ),
     );
-    await fs.rm(derivedData, { recursive: true, force: true });
   }
 } catch (error) {
   checks.push({
@@ -272,7 +277,8 @@ try {
   });
   process.exitCode = 1;
 } finally {
-  if (derivedData) await fs.rm(derivedData, { recursive: true, force: true });
+  if (derivedData && !reuseIosBuild)
+    await fs.rm(derivedData, { recursive: true, force: true });
   if (simulator) {
     try {
       run("xcrun", ["simctl", "shutdown", simulator]);

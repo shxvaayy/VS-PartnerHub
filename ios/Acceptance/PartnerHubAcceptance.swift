@@ -6,6 +6,9 @@ final class PartnerHubAcceptance: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if let simulator = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] {
+            print("PARTNERHUB_NATIVE_DEVICE: \(simulator)")
+        }
     }
 
     func record(_ name: String) {
@@ -38,6 +41,12 @@ final class PartnerHubAcceptance: XCTestCase {
         wait(for: [completed], timeout: 20)
     }
 
+    func openFileActions() {
+        tap(app.buttons["Download Power BI project"].firstMatch)
+        let save = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Save to Files")).firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 30), "The native file sheet must offer Save to Files.")
+    }
+
     func testAuthenticatedWorkspace() throws {
         app.launch()
         let email = app.textFields.firstMatch
@@ -58,9 +67,7 @@ final class PartnerHubAcceptance: XCTestCase {
         tap(app.buttons["Close dialog"].firstMatch)
         record("Native report navigation and KPI calculation dialog")
 
-        tap(app.buttons["Download Power BI project"].firstMatch)
-        let save = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Save to Files")).firstMatch
-        XCTAssertTrue(save.waitForExistence(timeout: 30), "The native file sheet must offer Save to Files.")
+        openFileActions()
         record("Downloaded report opens native iOS file actions")
         tap(app.buttons["Close"].firstMatch)
 
@@ -84,6 +91,11 @@ final class PartnerHubAcceptance: XCTestCase {
         XCTAssertTrue(app.buttons["Open navigation"].firstMatch.waitForExistence(timeout: 30))
         record("Reconnect restores the authenticated workspace")
 
+        // Populate cache after the reconnect/startup cleanup, then test logout.
+        navigate("Reports & analytics")
+        tap(app.buttons["Power BI preview"].firstMatch)
+        openFileActions()
+        tap(app.buttons["Close"].firstMatch)
         tap(app.buttons["Open navigation"].firstMatch)
         tap(app.buttons["Sign out"].firstMatch)
         XCTAssertTrue(app.buttons["Sign in to PartnerHub"].firstMatch.waitForExistence(timeout: 30))
@@ -92,7 +104,9 @@ final class PartnerHubAcceptance: XCTestCase {
 
     override func tearDownWithError() throws {
         if let count = testRun?.failureCount, count > 0 {
-            let hierarchy = XCTAttachment(string: app.debugDescription)
+            let description = app.debugDescription
+            print("PARTNERHUB_NATIVE_HIERARCHY: \(description)")
+            let hierarchy = XCTAttachment(string: description)
             hierarchy.name = "Native accessibility hierarchy"
             hierarchy.lifetime = .keepAlways
             add(hierarchy)

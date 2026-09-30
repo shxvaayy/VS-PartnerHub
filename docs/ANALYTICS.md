@@ -35,12 +35,13 @@ Select a KPI's information button to read its exact calculation. Charts link to 
 
 ## API and dataset contract
 
-| Method | Browser session route         | Purpose                                                      |
-| ------ | ----------------------------- | ------------------------------------------------------------ |
-| GET    | `/api/reports/analytics`      | All permitted report views and definitions                   |
-| GET    | `/api/reports/datasets/:view` | One CSV dataset                                              |
-| GET    | `/api/reports/power-query`    | A Power Query function with the chosen report settings       |
-| GET    | `/api/reports/power-bi`       | Editable Power BI dashboard project ZIP with authorized data |
+| Method | Browser session route         | Purpose                                                             |
+| ------ | ----------------------------- | ------------------------------------------------------------------- |
+| GET    | `/api/reports/analytics`      | All permitted report views and definitions                          |
+| GET    | `/api/reports/datasets/:view` | One CSV dataset                                                     |
+| GET    | `/api/reports/power-query`    | A Power Query function with the chosen report settings              |
+| GET    | `/api/reports/power-bi`       | Editable Power BI dashboard project ZIP with authorized data        |
+| GET    | `/api/reports/tableau`        | Packaged Tableau workbook with permitted dashboards and CSV sources |
 
 Filters are `from=YYYY-MM-DD`, `to=YYYY-MM-DD` and `currency=INR|USD|EUR|GBP`. The maximum period is ten years. View IDs are `executive`, `partners`, `procurement`, `performance`, `recruitment`, `finance`, `compliance` and `support`. Table IDs are `summary`, `metrics`, `trend`, `distribution`, plus `aging` for Finance and `verification` for Partners where authorized.
 
@@ -78,7 +79,27 @@ Exports are audited as `power_bi_workspace_exported`. The export tests validate 
 
 The downloaded function contains no token or password. Saving provider credentials in PartnerHub does not create an external Power BI tenant, publish a workbook or configure its refresh schedule. The local acceptance suite verifies the API data, authorization, downloaded query text and CSV/PDF artifacts; execution and publication inside a customer Power BI tenant require that tenant's access.
 
-## Tableau, CSV and PDF
+## Tableau dashboard workbook
+
+Choose **Reports → Export & connect → Download Tableau dashboards**. The `.twbx` file packages the permitted dashboard pages, editable KPI/chart worksheets, definitions, detailed datasets and an authorized data snapshot. Open it in Tableau Desktop. No Tableau tenant, database password or API token is required to read the included snapshot.
+
+Each dashboard has its reporting period/currency, four highlighted KPIs, a monthly trend, category counts, the complete KPI dictionary and measurement notes. All permitted datasets are available in the Data pane and additional worksheet tabs. The manifest records the snapshot timestamp, source columns and row counts. Missing numeric evidence stays null. KPI labels show major currency units and percentage values; original numeric dataset columns retain minor currency units and percentages from 0–100. Formula-like text is prefixed with an apostrophe in the CSV sources for safe spreadsheet opening; `Data/analytics.json` preserves the exact authorized values.
+
+The workbook is a snapshot: download it again for current reporting data. Refresh/publication inside a private Tableau environment remains a separate configuration. Do not upload business snapshots to Tableau Public. The export is audited as `tableau_workspace_exported`, respects the same current permissions as the Reports API and creates no integration token.
+
+Automated checks validate XML parsing, worksheet/source references, panel bounds, CSV values/units, tenant and role restrictions, and actual browser downloads. Tableau's independent **Document API 0.11** also reads, saves and reopens both the generated fixture and the authenticated browser export, retaining the packaged data. This proves package/data compatibility; it does not claim that Tableau Desktop's renderer or an external Tableau server was exercised.
+
+To reproduce the independent checks after the tests and browser suite:
+
+```sh
+python3 -m venv .local/tableau-validator
+.local/tableau-validator/bin/python -m pip install -r scripts/tableau-validation-requirements.txt
+.local/tableau-validator/bin/python scripts/verify-tableau.py artifacts/tableau-verification/test-workbook.twbx artifacts/analytics-verification/VS-PartnerHub-Tableau.twbx
+```
+
+The writer uses the legacy relational Tableau workbook format. Its connection, column-instance, worksheet and dashboard structures were checked against Tableau's public [connector SDK result workbook](https://github.com/tableau/connector-plugin-sdk/blob/master/tdvt/TDVT%20Results.twb), [community content workbook](https://github.com/tableau/community-tableau-server-insights/blob/master/datasources/ts_content/ts_content_01.02.twb) and [Document API examples](https://github.com/tableau/document-api-python). No example business records, remote connections or credentials are copied into PartnerHub exports.
+
+## CSV and PDF
 
 Use **Download CSV** for a Tableau Text File connection or an approved ingestion job that fetches the bearer CSV endpoint. Keep currency and snapshot/period fields when modelling data. Configure Tableau refresh and publication in the organization's environment; there is no preconfigured external Tableau account or embedded credential.
 
@@ -95,4 +116,4 @@ Generated documentation is tracked in [dictionaries](dictionaries/):
 
 Run `npm run docs:analytics` after changing schemas or KPI definitions. The generator migrates a fresh temporary SQLite database, reads schema metadata and produces definitions against an empty authorized context. It does not read operational rows, seed the workspace or expose configured credentials. The current schema documents 42 tables, 192 payload fields and 71 per-view KPI definitions across eight views.
 
-Calculations live in `server/analytics.ts`, response types in `shared/analytics.ts`, and presentation in `src/pages/Reports.tsx`. Analytics queries aggregate in SQL rather than loading candidate profiles or document files into the browser. Both SQLite and PostgreSQL suites cover tenant/source restrictions, currency isolation, revisions, partial payments, expiry boundaries, missing evidence and token expiry/revocation.
+Calculations live in `server/analytics.ts`, response types in `shared/analytics.ts`, and presentation in `src/pages/Reports.tsx`. The BI package writers are `server/bi-exports.ts` and `server/tableau-exports.ts`. Analytics queries aggregate in SQL rather than loading candidate profiles or document files into the browser. Both SQLite and PostgreSQL suites cover tenant/source restrictions, currency isolation, revisions, partial payments, expiry boundaries, missing evidence and token expiry/revocation.

@@ -136,6 +136,14 @@ describe("Authenticated browser and native downloads", () => {
     expect(downloadFilename(null, "a".repeat(300) + ".pdf")).toMatch(
       /^a{176}\.pdf$/,
     );
+    expect(downloadFilename(null, " .. ")).toBe("PartnerHub-file");
+    const international = downloadFilename(
+      null,
+      "आपूर्ति📄".repeat(40) + ".pdf",
+    );
+    expect(Buffer.byteLength(international, "utf8")).toBeLessThanOrEqual(180);
+    expect(international).toMatch(/\.pdf$/);
+    expect(international).not.toContain("�");
   });
   it("saves identical bytes to private native cache and invokes the operating system file sheet", async () => {
     native.enabled = true;

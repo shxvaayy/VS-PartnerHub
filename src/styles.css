@@ -8600,7 +8600,10 @@ fieldset.field legend {
   .public-nav > span {
     min-width: 0;
   }
+  /* Match the auth/onboarding specificity so iOS focus never auto-zooms. */
   .input,
+  .auth-form-wrap .input,
+  .onboarding-content .input,
   select.input,
   .search-input input {
     font-size: 16px;

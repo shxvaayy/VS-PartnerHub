@@ -22,13 +22,22 @@ export function downloadFilename(
   }
   name = name
     .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
+    .trim()
     .replace(/^\.+/, "")
     .trim();
   if (!name) name = "PartnerHub-file";
   const extension = name.match(/\.[a-z0-9]{1,12}$/i)?.[0] || "";
-  return name.length <= 180
-    ? name
-    : name.slice(0, 180 - extension.length) + extension;
+  const encoder = new TextEncoder();
+  if (encoder.encode(name).length <= 180) return name;
+  let shortened = "";
+  let bytes = extension.length;
+  for (const character of name.slice(0, name.length - extension.length)) {
+    const length = encoder.encode(character).length;
+    if (bytes + length > 180) break;
+    shortened += character;
+    bytes += length;
+  }
+  return shortened + extension;
 }
 
 export function isFileDownload(url: URL) {

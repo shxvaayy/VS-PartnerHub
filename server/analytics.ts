@@ -14,6 +14,7 @@ import { audit } from "./events.js";
 import { csv } from "./records.js";
 import { date } from "./validation.js";
 import { powerBiArchive } from "./bi-exports.js";
+import { tableauArchive } from "./tableau-exports.js";
 import {
   label,
   modules,
@@ -1648,6 +1649,26 @@ reportsRouter.get("/power-bi", async (req, res) => {
   res
     .type("application/zip")
     .attachment(`VS-PartnerHub-Power-BI-${report.to}.zip`)
+    .send(archive);
+});
+reportsRouter.get("/tableau", async (req, res) => {
+  const report = await buildAnalytics(
+    req.user,
+    analyticsFilters.parse(req.query),
+  );
+  const archive = tableauArchive(report);
+  await audit(
+    db,
+    req.user,
+    "tableau_workspace_exported",
+    "reports",
+    undefined,
+    undefined,
+    `${report.views.length} permitted dashboards; ${report.from} through ${report.to}; ${report.currency}`,
+  );
+  res
+    .type("application/octet-stream")
+    .attachment(`VS-PartnerHub-Tableau-${report.to}.twbx`)
     .send(archive);
 });
 reportsRouter.get("/power-query", async (req, res) => {

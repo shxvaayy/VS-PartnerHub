@@ -9,12 +9,18 @@ import { startNativeFixture } from "./native-fixture.mjs";
 const out = path.resolve("artifacts/native-verification/ios-acceptance");
 await fs.mkdir(out, { recursive: true });
 const checks = [];
+const resultBundle = path.join(out, "Acceptance.xcresult");
+const reuseBuild = process.env.NATIVE_IOS_REUSE_BUILD === "true";
+const derivedData = path.resolve(
+  ".local",
+  reuseBuild ? "native-ios-derived" : "native-acceptance-derived",
+);
 const run = (command, args) =>
   execFileSync(command, args, {
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
   });
-let fixture, simulator;
+let fixture, simulator, testedSimulator;
 try {
   fixture = await startNativeFixture();
   run("ruby", ["scripts/prepare-native-ios-tests.rb"]);
@@ -50,9 +56,9 @@ try {
       "-destination",
       `id=${simulator}`,
       "-derivedDataPath",
-      path.resolve(".local/native-acceptance-derived"),
+      derivedData,
       "-resultBundlePath",
-      path.join(out, "Acceptance.xcresult"),
+      resultBundle,
       "-parallel-testing-enabled",
       "NO",
       "CODE_SIGNING_ALLOWED=NO",
@@ -62,7 +68,29 @@ try {
   );
   child.stdout.pipe(log, { end: false });
   child.stderr.pipe(log, { end: false });
+  let pendingLine = "";
+  child.stdout.on("data", (chunk) => {
+    const lines = (pendingLine + String(chunk)).split(/\r?\n/);
+    pendingLine = lines.pop();
+    for (const line of lines) {
+      const device = line.match(/PARTNERHUB_NATIVE_DEVICE: ([a-f0-9-]{36})/i);
+      if (device) simulator = testedSimulator = device[1];
+      if (/PARTNERHUB_NATIVE_PASS:|Test Case |Test Suite |error:/.test(line))
+        console.log(line);
+    }
+  });
+  let timedOut = false;
+  const timeout = setTimeout(
+    () => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 30000).unref();
+    },
+    12 * 60 * 1000,
+  );
+  timeout.unref();
   const [code] = await once(child, "close");
+  clearTimeout(timeout);
   log.end();
   await once(log, "close");
   const text = await fs.readFile(logPath, "utf8");
@@ -75,12 +103,18 @@ try {
   assert.equal(
     code,
     0,
-    "Native iOS acceptance failed; inspect the XCTest result and screenshots.",
+    timedOut
+      ? "Native iOS acceptance exceeded its 12-minute execution limit; inspect the retained logs."
+      : "Native iOS acceptance failed; inspect the XCTest result and screenshots.",
   );
   assert.equal(
     checks.length,
     7,
     "Every authenticated iPhone acceptance stage must finish.",
+  );
+  assert(
+    testedSimulator,
+    "Cache checks must use the simulator that actually executed XCTest.",
   );
   const container = run("xcrun", [
     "simctl",
@@ -125,7 +159,23 @@ try {
     } catch {}
   }
 } finally {
+  if (existsSync(resultBundle)) {
+    try {
+      run("xcrun", [
+        "xcresulttool",
+        "export",
+        "attachments",
+        "--path",
+        resultBundle,
+        "--output-path",
+        path.join(out, "attachments"),
+      ]);
+    } catch (error) {
+      console.error("Could not export XCTest attachments:", error.message);
+    }
+  }
   await fixture?.close();
+  if (reuseBuild) await fs.rm(derivedData, { recursive: true, force: true });
   await fs.writeFile(
     path.join(out, "report.json"),
     JSON.stringify(
@@ -133,6 +183,7 @@ try {
         checkedAt: new Date().toISOString(),
         commit: run("git", ["rev-parse", "HEAD"]).trim(),
         checks,
+        testedSimulator,
         isolatedFixtures: true,
         realNativeWebView: true,
         physicalDevice: false,

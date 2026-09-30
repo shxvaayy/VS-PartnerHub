@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { PDFDocument } from "pdf-lib";
+import { strFromU8, unzipSync } from "fflate";
 import {
   reportViews,
   reportLabels,
@@ -110,7 +111,7 @@ test("all eight reports show their live API values, responsive charts and access
   expect(errors).toEqual([]);
 });
 
-test("report filters, source drill-downs, CSV, Power Query and printable PDF work with actual data", async ({
+test("report filters, source drill-downs, Tableau, CSV, Power Query and printable PDF work with actual data", async ({
   page,
 }) => {
   await login(page);
@@ -139,6 +140,16 @@ test("report filters, source drill-downs, CSV, Power Query and printable PDF wor
   );
   expect(connection.bytes.toString()).not.toMatch(/phk_[a-f0-9]{64}/);
   await writeFile(`${artifacts}/Finance-PowerQuery.m`, connection.bytes);
+  const tableau = await downloaded(page, "Download Tableau dashboards");
+  expect(tableau.name).toMatch(/\.twbx$/);
+  const workbook = unzipSync(tableau.bytes);
+  const manifest = JSON.parse(strFromU8(workbook["manifest.json"]));
+  expect(manifest.dashboards.map((view: any) => view.id)).toEqual([
+    ...reportViews,
+  ]);
+  expect(workbook[manifest.workbook]).toBeTruthy();
+  expect(workbook["Data/finance_aging.csv"]).toBeTruthy();
+  await writeFile(`${artifacts}/VS-PartnerHub-Tableau.twbx`, tableau.bytes);
   await page.getByRole("button", { name: "Close dialog" }).click();
   await page.emulateMedia({ media: "print" });
   await expect(page.locator(".skip-link")).toBeHidden();

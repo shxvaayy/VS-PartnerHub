@@ -192,7 +192,9 @@ export default function Reports() {
     if (key === "view") next.delete("table");
     setParams(next, { replace: true });
   };
-  async function download(kind: "csv" | "power-query" | "power-bi") {
+  async function download(
+    kind: "csv" | "power-query" | "power-bi" | "tableau",
+  ) {
     if (!selected || !selectedTable) return;
     setDownloading(kind);
     setExportError(undefined);
@@ -208,7 +210,9 @@ export default function Reports() {
         `/api/reports/${kind === "csv" ? `datasets/${selected.id}` : kind}?${filters}`,
         kind === "power-bi"
           ? `VS-PartnerHub-Power-BI-${to}.zip`
-          : `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`,
+          : kind === "tableau"
+            ? `VS-PartnerHub-Tableau-${to}.twbx`
+            : `VS-PartnerHub-${selected.id}-${selectedTable.id}-${to}.${kind === "csv" ? "csv" : "m"}`,
       );
       if (destination === "browser")
         toast(
@@ -216,7 +220,9 @@ export default function Reports() {
             ? "Report exported"
             : kind === "power-bi"
               ? "Power BI project downloaded"
-              : "Power Query file downloaded",
+              : kind === "tableau"
+                ? "Tableau workbook downloaded"
+                : "Power Query file downloaded",
         );
     } catch (e) {
       if ((e as { name?: string })?.name !== "AbortError") setExportError(e);
@@ -598,8 +604,8 @@ export default function Reports() {
             </Field>
             <p className="muted">
               {selectedTable.rows.length} rows ·{" "}
-              {scopeLabel(selectedTable.scope)}. Exports include every row in
-              this dataset.
+              {scopeLabel(selectedTable.scope)}. CSV includes every row in this
+              dataset. Dashboard workbooks include all reports you can access.
             </p>
             <FormError error={exportError} />
             <button
@@ -633,6 +639,25 @@ export default function Reports() {
                 </small>
               </span>
               <ArrowUpRight size={18} />
+            </button>
+            <button
+              className="analytics-export-option"
+              disabled={!!downloading}
+              onClick={() => download("tableau")}
+            >
+              <LayoutDashboard size={24} />
+              <span>
+                <strong>
+                  {downloading === "tableau"
+                    ? "Preparing Tableau workbook…"
+                    : "Download Tableau dashboards"}
+                </strong>
+                <small>
+                  Open an editable workbook in Tableau Desktop, with your
+                  permitted dashboards, charts and current data snapshot.
+                </small>
+              </span>
+              <ArrowDownToLine size={18} />
             </button>
             <button
               className="analytics-export-option"

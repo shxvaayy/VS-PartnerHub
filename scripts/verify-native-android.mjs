@@ -228,33 +228,91 @@ try {
   await check(
     "A server interruption shows the packaged reconnect screen and recovers the session",
     async () => {
+      const protocol = await page.context().newCDPSession(page);
       await fixture.offline();
       await page.reload().catch((error) => {
         if (!/net::|navigation|interrupted/i.test(error.message)) throw error;
       });
-      await expect(
-        page.getByRole("heading", { name: "Let’s get you reconnected." }),
-      ).toBeVisible();
-      assert(
-        await page
-          .locator("[data-workspace-logo]")
-          .evaluate((image) => image.complete && image.naturalWidth > 0),
-        "The native offline logo must render without a server connection.",
-      );
+      // Capacitor's errorPath navigation paints the local page but does not
+      // finish Playwright's pending remote-navigation lifecycle. Read the real
+      // installed WebView and deliver a touch through its public CDP session.
+      // No page state, connection result or user action is mocked here.
+      await expect
+        .poll(async () => {
+          const { result } = await protocol.send("Runtime.evaluate", {
+            expression: `(() => {
+            const logo = document.querySelector('[data-workspace-logo]');
+            return { path: location.pathname, heading: document.querySelector('h1')?.textContent.trim(), logo: !!(logo?.complete && logo.naturalWidth > 0) };
+          })()`,
+            returnByValue: true,
+          });
+          return result.value;
+        })
+        .toEqual({
+          path: "/offline.html",
+          heading: "Let’s get you reconnected.",
+          logo: true,
+        });
       await device.screenshot({ path: path.join(out, "native-offline.png") });
       await fixture.online();
-      await page
-        .getByRole("link", { name: "Return to workspace", exact: true })
-        .click();
+      const { result } = await protocol.send("Runtime.evaluate", {
+        expression: `(() => {
+          const link = document.querySelector('[data-workspace-link]');
+          const bounds = link.getBoundingClientRect();
+          return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, href: link.href, width: innerWidth, height: innerHeight };
+        })()`,
+        returnByValue: true,
+      });
+      const target = result.value;
+      assert.equal(target.href, "http://127.0.0.1:4207/app");
+      assert(
+        target.x > 0 &&
+          target.x < target.width &&
+          target.y > 0 &&
+          target.y < target.height,
+      );
+      await protocol.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: target.x, y: target.y }],
+      });
+      await protocol.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
       await expect(page).toHaveURL(/\/app$/);
       await expect(
         page.getByRole("button", { name: "Open navigation", exact: true }),
       ).toBeVisible();
+      await protocol.detach();
     },
   );
   await check(
     "Signing out removes the native session and cached private exports",
     async () => {
+      // Reconnect starts a new page and clears old startup cache. Create a fresh
+      // file now so the logout assertion cannot pass against an already empty cache.
+      await navigate("Reports & analytics");
+      await page
+        .getByRole("button", { name: "Power BI preview", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Download Power BI project", exact: true })
+        .click();
+      await expect
+        .poll(() => adb(["shell", "dumpsys", "activity", "activities"]))
+        .toMatch(/ChooserActivity/);
+      await device.shell("input keyevent KEYCODE_BACK");
+      await expect(
+        page.getByRole("button", {
+          name: "Download Power BI project",
+          exact: true,
+        }),
+      ).toBeEnabled();
+      assert(
+        adb(["shell", "run-as", pkg, "ls", "cache"]).includes(
+          "partnerhub-exports",
+        ),
+      );
       await page
         .getByRole("button", { name: "Open navigation", exact: true })
         .click();
