@@ -87,7 +87,7 @@ try {
   if ($signature.Status -ne 'Valid') { throw 'The official installer signature is not valid.' }
   if ($env:GITHUB_OUTPUT) { Add-Content $env:GITHUB_OUTPUT 'installer_verified=true' }
   $checks.Add(@{ name = 'Official installer hash and Authenticode signature'; passed = $true })
-  $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_CHECK=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
+  $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_NOTIFICATION=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
   $arguments += @('-log', ('"' + (Join-Path $out 'installer.log') + '"'))
   Write-Host 'Installer verified; starting the desktop installation.'
   $installed = Start-Process $installer -ArgumentList $arguments -PassThru

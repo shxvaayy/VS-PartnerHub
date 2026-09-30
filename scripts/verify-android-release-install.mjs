@@ -62,6 +62,21 @@ try {
     name: "Exact signed release APK installed on an Android emulator",
     passed: true,
   });
+  const networkDeadline = Date.now() + 90000;
+  let networkReady = false;
+  do {
+    const connectivity = run(["shell", "dumpsys", "connectivity"]);
+    networkReady = connectivity
+      .split("\n")
+      .some(
+        (line) =>
+          line.includes("NetworkAgentInfo") && line.includes("&VALIDATED"),
+      );
+    if (!networkReady)
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+  } while (!networkReady && Date.now() < networkDeadline);
+  acceptance.emulatorNetworkValidated = networkReady;
+  assert(networkReady, "The emulator has no validated internet connection.");
   run(["logcat", "-c"]);
   run([
     "shell",
@@ -171,6 +186,7 @@ try {
         "-s",
         "Capacitor:D",
         "Capacitor/Console:D",
+        "PartnerHubConnection:W",
         "chromium:E",
         "AndroidRuntime:E",
       ],
