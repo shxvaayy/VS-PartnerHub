@@ -143,8 +143,8 @@ export function Login() {
     setError(null);
     try {
       const result = await signIn(
-        account?.email || email,
-        account ? demoPassword : password,
+        import.meta.env.DEV && account ? account.email : email,
+        import.meta.env.DEV && account ? demoPassword : password,
       );
       if (result.requiresOtp) {
         setChallenge({
@@ -328,7 +328,7 @@ export function Login() {
             <Link to="/setup">Create the first administrator</Link>
           </p>
         )}
-        {demo && (
+        {import.meta.env.DEV && demo && (
           <div className="demo-login">
             <div className="demo-login-title">
               <Sparkles size={17} />

@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { demoAccounts, demoPassword } from "../build/shared/demo.js";
 
 const directory = await mkdtemp(path.join(tmpdir(), "partnerhub-production-"));
 const application = path.resolve("build/server/index.js");
@@ -102,6 +110,16 @@ try {
   const asset = html.match(/src="(\/assets\/[^\"]+\.js)"/);
   assert.ok(asset, "Compiled frontend entry must be served.");
   assert.equal((await fetch(`${base}${asset[1]}`)).status, 200);
+  const browserAssets = path.resolve("dist/assets");
+  for (const file of await readdir(browserAssets)) {
+    if (!/\.(?:js|map)$/.test(file)) continue;
+    const content = await readFile(path.join(browserAssets, file), "utf8");
+    for (const value of [demoPassword, ...demoAccounts.map((a) => a.email)])
+      assert.ok(
+        !content.includes(value),
+        `Local demonstration credentials must not be published in ${file}.`,
+      );
+  }
   const signedIn = await fetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -217,6 +235,7 @@ try {
         checks: [
           "Configuration guards",
           "Compiled assets",
+          "Browser assets exclude local demonstration credentials",
           "Security headers",
           "Secure session cookies",
           "Production demo suppression",
