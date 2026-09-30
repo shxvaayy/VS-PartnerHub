@@ -44,6 +44,8 @@ const literal = (value: string | number | boolean) => ({
 const fill = (color: string) => ({ solid: { color: literal(color) } });
 const tableName = (view: ReportView, table: ReportTable) =>
   `${view.id}_${table.id}`;
+const measureName = (view: ReportView, metric: ReportMetric) =>
+  `${view.title}: ${metric.label}`;
 
 function formatString(format: ReportMetric["format"], currency: string) {
   if (format === "money") return `"${currency} "#,0.00;"${currency} "-#,0.00`;
@@ -151,7 +153,7 @@ function model(report: AnalyticsReport, appUrl: string) {
             ...(table.id === "metrics"
               ? {
                   measures: view.metrics.map((metric) => ({
-                    name: metric.label,
+                    name: measureName(view, metric),
                     description: `${metric.definition} Scope: ${metric.scope}.`,
                     expression: `CALCULATE(MAX('${tableName(view, table)}'[value]), '${tableName(view, table)}'[metric] = ${daxText(metric.key)})${["money", "percent"].includes(metric.format) ? " / 100" : ""}`,
                     formatString: formatString(metric.format, report.currency),
@@ -320,7 +322,14 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       },
       {
         Values: {
-          projections: [projection(metricTable, metric.label, "Measure")],
+          projections: [
+            projection(
+              metricTable,
+              measureName(view, metric),
+              "Measure",
+              metric.label,
+            ),
+          ],
         },
       },
       {

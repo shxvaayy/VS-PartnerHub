@@ -53,6 +53,14 @@ describe("Native Power BI workspace exports", () => {
       `${reportPath}/${report.datasetReference.byPath.path}`,
     );
     const model = read(files, `${modelPath}/model.bim`).model;
+    const measureNames = model.tables.flatMap((table: any) =>
+      (table.measures || []).map((measure: any) =>
+        measure.name.toLocaleLowerCase("en-US"),
+      ),
+    );
+    // DAX measure names are model-wide, even when the measures have different
+    // home tables. Our fixture deliberately repeats KPI labels across views.
+    expect(new Set(measureNames).size).toBe(measureNames.length);
     const pages = read(files, `${reportPath}/definition/pages/pages.json`);
     expect(pages.pageOrder).toEqual([...reportViews]);
     for (const name of pages.pageOrder) {
@@ -118,16 +126,19 @@ describe("Native Power BI workspace exports", () => {
       (item: any) => item.name === "finance_metrics",
     );
     expect(
-      metrics.measures.find((item: any) => item.name === "Approved value")
-        .expression,
+      metrics.measures.find((item: any) =>
+        item.name.endsWith(": Approved value"),
+      ).expression,
     ).toMatch(/\/ 100$/);
     expect(
-      metrics.measures.find((item: any) => item.name === "Response rate")
-        .formatString,
+      metrics.measures.find((item: any) =>
+        item.name.endsWith(": Response rate"),
+      ).formatString,
     ).toBe("0.0%");
     expect(
-      metrics.measures.find((item: any) => item.name === "Organizations")
-        .expression,
+      metrics.measures.find((item: any) =>
+        item.name.endsWith(": Organizations"),
+      ).expression,
     ).not.toContain("/ 100");
     expect(biValue(12345678, "money", "INR")).toBe("₹1,23,456.78");
     expect(biValue(42.5, "percent", "INR")).toBe("42.5%");
