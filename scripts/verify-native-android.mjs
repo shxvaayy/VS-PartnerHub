@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { _android, expect } from "@playwright/test";
+import { _android, expect as playwrightExpect } from "@playwright/test";
 import { unzipSync, strFromU8 } from "fflate";
 import { startNativeFixture } from "./native-fixture.mjs";
 
 const pkg = "com.vijaysoftwaresolutions.partnerhub";
+const expect = playwrightExpect.configure({ timeout: 30000 });
 const out = path.resolve("artifacts/native-verification/android-acceptance");
 await fs.mkdir(out, { recursive: true });
 const checks = [],
@@ -150,6 +152,54 @@ try {
     },
   );
   await check(
+    "Private document links open the native file sheet without leaving the document workspace",
+    async () => {
+      await navigate("Documents");
+      const link = page.getByRole("link", { name: /^Download / }).first();
+      await expect(link).toBeVisible();
+      const address = await link.getAttribute("href");
+      const original = Buffer.from(
+        await page.evaluate(async (url) => {
+          const response = await fetch(url);
+          if (!response.ok)
+            throw new Error("The authorized document was not returned.");
+          return Array.from(new Uint8Array(await response.arrayBuffer()));
+        }, address),
+      );
+      await link.click();
+      await expect
+        .poll(() => adb(["shell", "dumpsys", "activity", "activities"]))
+        .toMatch(/ChooserActivity/);
+      const files = adb([
+        "shell",
+        "run-as",
+        pkg,
+        "find",
+        "cache/partnerhub-exports",
+        "-type",
+        "f",
+      ])
+        .trim()
+        .split(/\r?\n/);
+      const file = files.find((name) => name.endsWith(".pdf"));
+      assert(file, "The private PDF must be prepared in the app cache.");
+      const cached = execFileSync("adb", [
+        "exec-out",
+        "run-as",
+        pkg,
+        "cat",
+        file,
+      ]);
+      assert.equal(
+        createHash("sha256").update(cached).digest("hex"),
+        createHash("sha256").update(original).digest("hex"),
+      );
+      await device.shell("input keyevent KEYCODE_BACK");
+      await expect(page).toHaveURL(/\/app\/documents(?:\?.*)?$/);
+      await expect(link).not.toHaveAttribute("aria-busy", "true");
+    },
+  );
+  await check(
     "Returning from the background refreshes records created by another authorized session",
     async () => {
       await navigate("Requirements");
@@ -185,6 +235,12 @@ try {
       await expect(
         page.getByRole("heading", { name: "Let’s get you reconnected." }),
       ).toBeVisible();
+      assert(
+        await page
+          .locator("[data-workspace-logo]")
+          .evaluate((image) => image.complete && image.naturalWidth > 0),
+        "The native offline logo must render without a server connection.",
+      );
       await device.screenshot({ path: path.join(out, "native-offline.png") });
       await fixture.online();
       await page

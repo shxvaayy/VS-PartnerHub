@@ -34,6 +34,11 @@ function verifyConfig(config) {
   assert.equal(config.server.errorPath, "offline.html");
 }
 function verifyOffline(html) {
+  assert.match(
+    html,
+    /data-workspace-logo\s+src="data:image\/png;base64,[A-Za-z0-9+/=]+"/,
+    "The offline brand image must be bundled without a network request.",
+  );
   const link = html.match(/<a\s+data-workspace-link\s+href="([^"]+)"/);
   assert(link, "The packaged offline page must have a reconnect link.");
   assert.equal(

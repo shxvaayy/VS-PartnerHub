@@ -40,10 +40,19 @@ if (platform !== "web") {
   const filename = path.join(assets, "public/offline.html");
   const html = await fs.readFile(filename, "utf8");
   const link = /(<a\s+data-workspace-link\s+href=")[^"]*(")/g;
+  const logo = /(<img\s+data-workspace-logo\s+src=")[^"]*(")/g;
   assert.equal(
     [...html.matchAll(link)].length,
     1,
     "The bundled offline page must contain one marked reconnect link; rebuild the web app before sync.",
+  );
+  assert.equal(
+    [...html.matchAll(logo)].length,
+    1,
+    "The offline page must contain one marked brand image; rebuild before sync.",
+  );
+  const logoBytes = await fs.readFile(
+    path.join(assets, "public/icons/partnerhub-192.png"),
   );
   const escapedUrl = workspace.href.replace(
     /[&<>"']/g,
@@ -54,10 +63,16 @@ if (platform !== "web") {
   );
   await fs.writeFile(
     filename,
-    html.replace(
-      link,
-      (_match, before, after) => `${before}${escapedUrl}${after}`,
-    ),
+    html
+      .replace(
+        logo,
+        (_match, before, after) =>
+          `${before}data:image/png;base64,${logoBytes.toString("base64")}${after}`,
+      )
+      .replace(
+        link,
+        (_match, before, after) => `${before}${escapedUrl}${after}`,
+      ),
   );
   console.log(
     `Prepared ${platform} offline reconnect for the configured workspace.`,

@@ -11,6 +11,7 @@ tests.source_build_phase.add_file_reference(group.new_file('PartnerHubAcceptance
 tests.build_configurations.each do |configuration|
   configuration.build_settings.merge!({
     'PRODUCT_BUNDLE_IDENTIFIER' => 'com.vijaysoftwaresolutions.partnerhub.acceptance',
+    'PRODUCT_NAME' => '$(TARGET_NAME)',
     'TEST_TARGET_NAME' => 'App',
     'GENERATE_INFOPLIST_FILE' => 'YES',
     'SWIFT_VERSION' => '5.0',
@@ -18,6 +19,9 @@ tests.build_configurations.each do |configuration|
     'TARGETED_DEVICE_FAMILY' => '1,2'
   })
 end
+project.root_object.attributes['TargetAttributes'][tests.uuid] = {
+  'TestTargetID' => app.uuid
+}
 scheme = Xcodeproj::XCScheme.new
 scheme.add_build_target(app)
 scheme.add_build_target(tests)
