@@ -38,7 +38,7 @@ const common = {
   location: text(300).default(""),
   remarks: opt,
 };
-const payloadSchemas: Record<Module, z.ZodType<any>> = {
+export const payloadSchemas: Record<Module, z.ZodType<any>> = {
   requirements: z
     .object({
       ...common,
@@ -51,6 +51,7 @@ const payloadSchemas: Record<Module, z.ZodType<any>> = {
       quantity: nonnegative.default(1),
       skills: opt,
       experience: opt,
+      notice_period: text(100).default(""),
       technology: opt,
       delivery_requirements: opt,
       positions: z.coerce.number().int().min(1).max(10000).default(1),

@@ -230,6 +230,8 @@ export const pagination = z.object({
   q: text(200).default(""),
   status: text(50).default(""),
   category: text(100).default(""),
+  currency: z.enum(["", "INR", "USD", "EUR", "GBP"]).default(""),
+  requirement_type: z.enum(["", "procurement", "hiring"]).default(""),
   from: optionalDate,
   to: optionalDate,
 });

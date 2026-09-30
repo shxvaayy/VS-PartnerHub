@@ -35,7 +35,8 @@
     "mobile:ios": "cap open ios",
     "mobile:android": "cap open android",
     "mobile:assets": "node scripts/mobile-assets.mjs",
-    "report:verification": "node scripts/verification-report.mjs"
+    "report:verification": "node scripts/verification-report.mjs",
+    "docs:analytics": "node --import tsx scripts/analytics-dictionary.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

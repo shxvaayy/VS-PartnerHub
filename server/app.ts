@@ -15,6 +15,7 @@ import { recordsRouter } from "./records.js";
 import { documentsRouter } from "./documents.js";
 import { adminRouter } from "./admin.js";
 import { dashboardRouter } from "./dashboard.js";
+import { reportsRouter } from "./analytics.js";
 import { aiRouter } from "./ai.js";
 import { integrationsRouter, emailWebhook } from "./integrations.js";
 import {
@@ -115,6 +116,7 @@ export function createApp() {
   app.use("/api/integrations", integrationsRouter);
   app.use("/api/integrations", businessIntegrationsRouter);
   app.use("/api/integration", integrationApiRouter);
+  app.use("/api/reports", reportsRouter);
   app.use("/api", dashboardRouter);
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API route not found." });

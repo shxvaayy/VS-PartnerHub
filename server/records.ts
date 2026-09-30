@@ -38,6 +38,13 @@ recordsRouter.get("/:kind/export", async (req, res) => {
   const p = pagination.parse(req.query),
     query = scopeRecords(db("records").where("records.kind", kind), req.user);
   if (p.status) query.where("records.status", p.status);
+  if (p.currency) query.where("records.currency", p.currency);
+  if (p.requirement_type && kind === "requirements")
+    query.where(
+      "records.payload",
+      "like",
+      `%"requirement_type":"${p.requirement_type}"%`,
+    );
   if (p.q)
     query.where((b) =>
       b.whereILike("title", `%${p.q}%`).orWhereILike("number", `%${p.q}%`),
@@ -99,6 +106,13 @@ recordsRouter.get("/:kind", async (req, res) => {
         .orWhereILike("records.number", `%${p.q}%`),
     );
   if (p.status) q.where("records.status", p.status);
+  if (p.currency) q.where("records.currency", p.currency);
+  if (p.requirement_type && kind === "requirements")
+    q.where(
+      "records.payload",
+      "like",
+      `%"requirement_type":"${p.requirement_type}"%`,
+    );
   if (parentId) q.where("records.parent_id", parentId);
   if (p.from) q.where("records.created_at", ">=", p.from);
   if (p.to) q.where("records.created_at", "<=", `${p.to}T23:59:59.999Z`);

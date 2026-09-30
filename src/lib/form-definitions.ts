@@ -67,6 +67,7 @@ export const formFields: Record<Module, FieldDef[]> = {
     }),
     { ...text("skills", "Required skills"), hiring: true },
     { ...text("experience", "Experience range"), hiring: true },
+    { ...text("notice_period", "Maximum notice period"), hiring: true },
     { ...number("positions", "Open positions", 1), hiring: true },
     {
       ...select("employment_type", "Employment type", [

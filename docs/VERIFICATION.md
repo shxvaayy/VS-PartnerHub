@@ -5,9 +5,9 @@ Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLit
 | Check                                       | Result                                                                                                                   |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript, production build and formatting | Passed                                                                                                                   |
-| SQLite automated suite                      | 119 / 119 passed                                                                                                         |
-| PostgreSQL automated suite                  | 119 / 119 passed                                                                                                         |
-| Browser acceptance                          | 18 / 18 passed; no retries or skipped tests                                                                              |
+| SQLite automated suite                      | 132 / 132 passed                                                                                                         |
+| PostgreSQL automated suite                  | 132 / 132 passed                                                                                                         |
+| Browser acceptance                          | 32 / 32 passed; no retries or skipped tests                                                                              |
 | Live VS AI acceptance                       | 32 / 32 passed across all six capabilities                                                                               |
 | PDF and CSV acceptance                      | 7 / 7 passed                                                                                                             |
 | Real-mode SMTP authentication               | 7 / 7 passed using an authenticated loopback receiver; 12 messages received                                              |
@@ -20,6 +20,10 @@ Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLit
 | Configured secret scan                      | No configured secret values found in versionable files; local environment file permissions are `0600`                    |
 
 The browser suite completes registration with document/email review, procurement through payment, recruitment through joining, team invitations and email sign-in verification, staffing timesheets, service milestones, technology demos, contract renewal, performance reviews and support conversations. AI scenarios check actual uploads and downloads, real server progress events, cancellation, retry, reduced motion, saved conversations, named actions, human review, editable drafts, comparison, discovery and operational evidence on desktop and mobile.
+
+The latest analytics audit verifies eight SQL-backed reports, KPI definitions, current verification stages, response denominators, invoice aging, document-policy coverage, currency isolation and scoped BI token expiry/revocation. The generated dictionary covers 42 tables, 192 payload fields and 71 per-view KPI definitions. Four reporting browser scenarios were rerun after improving PDF print layout; all passed. The generated PDF was opened and its text/figures checked, including complete dataset rows and calculation notes. See [ANALYTICS.md](ANALYTICS.md).
+
+The homepage tour has ten browser checks covering all nine workspaces, forward/reverse progression, direct/keyboard tabs, native touch gestures, five portrait phone sizes (including 320 × 568 and 375 × 550), rotation, selected-tab visibility, final release and reduced motion. Desktop cards have balanced viewport placement and portrait phones use compact content without forcing a blank card height.
 
 The latest specification audit added required company-type/contact-role checks for all nine registration types, shared international phone validation for organization and candidate/contact records, and protection against clearing a primary contact's phone. Invalid submissions leave no account or organization behind. The browser verifies the phone error before continuing onboarding.
 
@@ -39,6 +43,8 @@ API coverage includes organization isolation, role restrictions, document access
 | F. Operational alerts   | 3 / 3       | All seven categories, recorded evidence, reuse and no business mutations                                                                                                        |
 
 The API and browser suites use controlled provider responses to reproduce success and failure conditions. The **separate live suite calls the configured Google service** for language responses and OCR, and also checks reuse and human decision ownership. These results are not interchangeable. The handoff includes actual live prompts, returned narratives and full structured results.
+
+After adding maximum notice period to hiring requirements, four requirement-drafting checks were rerun with the real provider and all passed. They verify procurement fields, explicit human save, private result reuse and an English hiring draft with a 15-day notice limit distinct from the joining date. The report is `artifacts/analytics-verification/live-requirement-refresh.json`; the full earlier provider run keeps its original timestamp.
 
 After the parser cancellation fix, the ten Document AI checks were rerun against the real provider and all passed. Their separate evidence is `artifacts/local-verification/ai/document-parser-refresh.json`; the earlier all-capability run remains in `ai/live-complete.json` with its original timestamp.
 

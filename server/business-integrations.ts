@@ -15,6 +15,8 @@ import { encryptSecret } from "./integration-config.js";
 import { validateWebhookUrl } from "./webhooks.js";
 import { audit } from "./events.js";
 import { modules, type Permissions } from "../shared/domain.js";
+import { integrationScopes } from "../shared/analytics.js";
+import { analyticsHandler, datasetHandler } from "./analytics.js";
 import { pagination, uuid } from "./validation.js";
 import {
   recordDetail,
@@ -152,7 +154,11 @@ businessIntegrationsRouter.post(
     const data = z
       .object({
         name: z.string().trim().min(2).max(180),
-        scopes: z.array(z.enum(modules)).min(1).max(30),
+        scopes: z
+          .array(z.enum(integrationScopes))
+          .min(1)
+          .max(30)
+          .transform((scopes) => [...new Set(scopes)]),
         expiresInDays: z.number().int().min(1).max(365).default(90),
       })
       .parse(req.body);
@@ -245,6 +251,16 @@ const tokenAuth: RequestHandler = async (req, _res, next) => {
   }
 };
 integrationApiRouter.use(tokenAuth);
+integrationApiRouter.get(
+  "/reports/analytics",
+  permit("reports"),
+  analyticsHandler,
+);
+integrationApiRouter.get(
+  "/reports/datasets/:view",
+  permit("reports"),
+  datasetHandler,
+);
 integrationApiRouter.get("/records/:kind", async (req, res) => {
   const kind = z.enum(modules).parse(req.params.kind);
   assert(

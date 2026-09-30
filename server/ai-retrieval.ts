@@ -427,6 +427,7 @@ const recordKeys = [
   "lead_time",
   "skills",
   "experience",
+  "notice_period",
   "technology",
   "delivery_requirements",
   "requirement_type",

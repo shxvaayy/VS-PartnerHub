@@ -433,7 +433,7 @@ export default function Layout() {
             </button>
             <span className="breadcrumb-home">Workspace</span>
             <ChevronRight size={14} />
-            <strong>{title}</strong>
+            <strong title={title}>{title}</strong>
           </div>
           <div className="topbar-actions">
             <button

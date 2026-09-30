@@ -198,7 +198,7 @@
 }
 .hub-header {
   z-index: 100;
-  background: rgba(251, 252, 248, 0.98);
+  background: #fbfcf8;
 }
 .hub-header .public-nav {
   padding: 0 48px;
@@ -791,14 +791,26 @@
   position: relative;
   overflow-anchor: none;
 }
+.hub-workspace-track::before {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 100vh;
+  height: 100svh;
+  visibility: hidden;
+  pointer-events: none;
+}
 .hub-workspace-track[data-scroll="true"] {
   height: calc(var(--workspace-stage-height) + var(--workspace-distance));
 }
 .hub-workspace-stage {
   --workspace-progress: 0;
   --workspace-enter-y: 20px;
-  background: #f2f5ed;
-  padding: 12px 0;
+  background: #fbfcf8;
+  border: 1px solid #dce5d3;
+  border-radius: 20px;
+  box-shadow: 0 16px 42px -32px #284d3838;
+  padding: 22px 26px;
 }
 .hub-workspace-stage[data-direction="backward"] {
   --workspace-enter-y: -20px;
@@ -808,7 +820,7 @@
   top: var(--workspace-top);
 }
 .hub-workspace-stage .hub-workspace-tabs {
-  margin: 0 0 24px;
+  margin: 0 0 18px;
   padding: 4px;
   gap: 8px;
 }
@@ -852,6 +864,7 @@
   z-index: 1;
 }
 .hub-workspace-stage .hub-workspace-panel h3 {
+  font-size: clamp(30px, 2.7vw, 40px);
   margin: 14px 0;
   max-width: 460px;
 }
@@ -866,8 +879,8 @@
   display: flex;
   align-items: center;
   gap: 17px;
-  margin-top: 22px;
-  padding: 18px 4px 2px;
+  margin-top: 16px;
+  padding: 14px 4px 0;
   border-top: 1px solid #dce5d3;
   color: #526648;
   font-size: 11px;
@@ -908,6 +921,9 @@
   font-weight: 550;
   padding: 5px 0;
 }
+.hub-workspace-skip-mobile {
+  display: none;
+}
 .hub-workspace-scroll-footer > a:hover {
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -942,91 +958,153 @@
   }
 }
 @media (max-width: 800px) {
+  .hub-workspaces.hub-section {
+    padding-inline: 16px;
+  }
+  .hub-workspace-stage {
+    padding: 12px;
+    border-radius: 16px;
+    --workspace-enter-y: 12px;
+  }
+  .hub-workspace-stage[data-direction="backward"] {
+    --workspace-enter-y: -12px;
+  }
   .hub-workspace-stage .hub-workspace-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #b8c9a8 transparent;
-    margin-bottom: 16px;
-    padding: 4px 3px 10px;
-    gap: 7px;
+    scrollbar-width: none;
+    margin-bottom: 12px;
+    padding: 0 0 8px;
+    gap: 6px;
+  }
+  .hub-workspace-stage .hub-workspace-tabs::-webkit-scrollbar {
+    display: none;
   }
   .hub-workspace-stage .hub-workspace-tabs > button {
     flex: 0 0 auto;
     white-space: nowrap;
     font-size: 11px;
+    min-height: 44px;
   }
   .hub-workspace-panels > .hub-workspace-panel {
-    gap: 20px;
-    padding-top: 0;
+    gap: 12px;
+    padding: 0;
+    align-content: start;
+  }
+  .hub-workspace-type {
+    font-size: 11px;
+    gap: 7px;
   }
   .hub-workspace-stage .hub-workspace-panel h3 {
-    font-size: 26px;
+    font-size: 24px;
     line-height: 1.16;
     max-width: none;
-    margin: 10px 0;
+    margin: 8px 0 10px;
   }
   .hub-workspace-stage .hub-workspace-description {
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.45;
     max-width: none;
+    margin: 0;
   }
   .hub-workspace-stage .hub-workspace-panel ul {
-    margin: 14px 0 16px;
-    gap: 6px;
+    margin: 12px 0;
+    gap: 5px;
   }
   .hub-workspace-stage .hub-workspace-panel li {
     font-size: 11px;
     line-height: 1.5;
   }
   .hub-workspace-stage .hub-workspace-panel .button {
-    min-height: 40px;
+    min-height: 44px;
     font-size: 11px;
+    padding-inline: 12px;
+    width: 100%;
+    justify-content: space-between;
   }
   .hub-workspace-stage .hub-workspace-journey {
-    padding: 14px;
+    padding: 12px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 6px 10px;
+    border-radius: 10px;
   }
   .hub-workspace-stage .hub-workspace-journey > span {
     grid-column: 1 / -1;
-    margin: 0 0 4px;
+    margin: 0 0 2px;
     font-size: 8px;
+    letter-spacing: 0.7px;
   }
   .hub-workspace-stage .hub-workspace-journey > div {
     margin: 0;
-    padding: 10px 8px;
-    gap: 7px;
+    padding: 6px 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    gap: 6px;
   }
   .hub-workspace-stage .hub-workspace-journey > div > span {
-    width: 22px;
+    width: 23px;
     height: 25px;
     flex-shrink: 0;
     font-size: 10px;
   }
   .hub-workspace-stage .hub-workspace-journey > div strong {
     font-size: 11px;
-    line-height: 1.4;
+    line-height: 1.35;
   }
   .hub-workspace-stage .hub-workspace-journey > div svg {
-    width: 14px;
-    flex-shrink: 0;
+    display: none;
   }
   .hub-workspace-stage .hub-workspace-journey > p {
-    grid-column: 1 / -1;
-    margin: 5px 0 0;
-    font-size: 9px;
-    line-height: 1.5;
+    display: none;
   }
   .hub-workspace-scroll-footer {
-    gap: 10px;
+    gap: 8px;
     margin-top: 12px;
-    padding-top: 12px;
+    padding: 4px 0 0;
     font-size: 10px;
   }
-  .hub-workspace-scroll-hint {
+  .hub-workspace-scroll-footer > a {
+    min-height: 40px;
+  }
+  .hub-workspace-skip-mobile {
+    display: inline;
+  }
+  .hub-workspace-scroll-hint,
+  .hub-workspace-skip-desktop {
     display: none;
+  }
+}
+@media (max-width: 800px) and (max-height: 700px) {
+  .hub-workspace-stage .hub-workspace-description {
+    display: none;
+  }
+  .hub-workspace-stage .hub-workspace-panel h3 {
+    font-size: 22px;
+  }
+  .hub-workspace-stage .hub-workspace-panel ul {
+    margin-top: 10px;
+  }
+}
+@media (max-width: 800px) and (max-height: 620px) {
+  .hub-workspace-stage {
+    padding: 10px;
+  }
+  .hub-workspace-stage .hub-workspace-tabs {
+    margin-bottom: 8px;
+  }
+  .hub-workspace-panels > .hub-workspace-panel {
+    gap: 10px;
+  }
+  .hub-workspace-stage .hub-workspace-journey {
+    padding: 8px;
+  }
+  .hub-workspace-stage .hub-workspace-journey > span {
+    display: none;
+  }
+  .hub-workspace-scroll-footer {
+    margin-top: 8px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -31,18 +31,25 @@ export async function masterLists(k: Database = db, includeInactive = false) {
     ]),
   );
 }
-export async function documentPolicies(type: string, k: Database = db) {
-  const settings = parseJson(
-    (await k("settings").where({ key: "platform" }).first())?.value,
-  );
+export async function documentPolicyCatalogue(k: Database = db) {
+  // A caller may provide a transaction, whose PostgreSQL connection must not
+  // run overlapping queries.
+  const setting = await k("settings").where({ key: "platform" }).first();
   const masters = await k("master_data").where({
     kind: "document",
     active: true,
   });
-  const policies = await k("document_policies").whereIn("organization_type", [
-    "all",
-    type,
-  ]);
+  const policies = await k("document_policies");
+  return { settings: parseJson(setting?.value), masters, policies };
+}
+export function resolveDocumentPolicies(
+  type: string,
+  {
+    settings,
+    masters,
+    policies,
+  }: Awaited<ReturnType<typeof documentPolicyCatalogue>>,
+) {
   return [
     ...new Set([
       ...masters.map((row) => row.label),
@@ -69,6 +76,9 @@ export async function documentPolicies(type: string, k: Database = db) {
         : settings.documentExpiryDays || [90, 60, 30],
     };
   });
+}
+export async function documentPolicies(type: string, k: Database = db) {
+  return resolveDocumentPolicies(type, await documentPolicyCatalogue(k));
 }
 export const masterDataRouter = Router();
 masterDataRouter.use(authenticated);

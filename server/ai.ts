@@ -972,6 +972,7 @@ export const draftSchema = answer.extend({
       budget: z.number().min(0),
       skills: z.string().max(2000),
       experience: z.string().max(2000),
+      notice_period: z.string().max(100).default(""),
       technology: z.string().max(2000),
       delivery_requirements: z.string().max(3000),
       quantity: z.number().min(0).max(100000000),
@@ -1008,7 +1009,7 @@ aiRouter.post(
     const c = await conversation(undefined, req.user, `Draft · ${input.brief}`);
     const response = await cachedAnalysis(
       {
-        system: `${system} Identify skills, quantity, location, experience, technology and delivery requirements, then draft a structured requirement for human review, never publish it. Begin with the result, without a greeting or self-introduction. For hiring, delivery_requirements includes the stated work arrangement (remote, hybrid or on-site) and joining/availability constraints; copy an explicit headcount into both quantity and positions. Use detectedConstraints as literal facts from the brief. For unspecified text/dates use an empty string, for unspecified amounts, quantity or positions use 0, and list all missing information in warnings. Use 0 positions for procurement; do not invent a hiring headcount. Do not invent commercial commitments, dates, prices, quantities, tax or discounts. Include a line item only when its quantity was given. HR users may create only hiring requirements. Return a concise analysis in answer and the editable draft in draft.`,
+        system: `${system} Identify skills, quantity, location, experience, technology, delivery requirements and any stated maximum notice period, then draft a structured requirement for human review, never publish it. Begin with the result, without a greeting or self-introduction. For hiring, delivery_requirements includes the stated work arrangement (remote, hybrid or on-site) and joining/availability constraints; copy an explicit headcount into both quantity and positions. Use detectedConstraints as literal facts from the brief. For unspecified text/dates use an empty string, for unspecified amounts, quantity or positions use 0, and list all missing information in warnings. Use 0 positions for procurement; do not invent a hiring headcount. Do not invent commercial commitments, dates, prices, quantities, tax or discounts. Include a line item only when its quantity was given. HR users may create only hiring requirements. Return a concise analysis in answer and the editable draft in draft.`,
         parts: [
           {
             text: JSON.stringify({

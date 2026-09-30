@@ -2342,6 +2342,7 @@ export function enterpriseCases(h: any) {
           positions: 4,
           skills: "TypeScript, React",
           experience: "5–7 years",
+          notice_period: "30 days",
           technology: "TypeScript",
           delivery_requirements: "Start within 30 days",
           criteria: "Verified staffing partners",
@@ -2351,13 +2352,14 @@ export function enterpriseCases(h: any) {
       try {
         const result = await post("hr", "/ai/draft-requirement", {
           brief:
-            "Need 4 TypeScript and React specialists with 5–7 years experience in Pune, remote team starting within 30 days.",
+            "Need 4 TypeScript and React specialists with 5–7 years experience in Pune, remote team starting within 30 days. Maximum notice period: 30 days.",
         });
         const draft = result.messages.at(-1).structured.draft;
         expect(draft.payload).toMatchObject({
           quantity: 4,
           positions: 4,
           experience: "5–7 years",
+          notice_period: "30 days",
           technology: "TypeScript",
           delivery_requirements: "Remote team. Start within 30 days",
         });
@@ -2372,6 +2374,7 @@ export function enterpriseCases(h: any) {
         );
         expect(saved.status).toBe("draft");
         expect(saved.payload.technology).toBe("TypeScript");
+        expect(saved.payload.notice_period).toBe("30 days");
       } finally {
         draftFixture = undefined;
       }

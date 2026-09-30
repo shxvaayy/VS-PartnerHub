@@ -22,6 +22,8 @@ import {
   useToast,
 } from "../components/ui";
 import { formatDate } from "../lib/format";
+import { integrationScopes } from "../../shared/analytics";
+import { modules, moduleDefinitions, type Module } from "../../shared/domain";
 
 export default function Integrations() {
   const { user } = useAuth(),
@@ -460,8 +462,15 @@ function BusinessConnections() {
     [error, setError] = useState<unknown>(),
     [secret, setSecret] = useState(""),
     [keyName, setKeyName] = useState(""),
+    [keyScopes, setKeyScopes] = useState<string[]>([]),
+    [events, setEvents] = useState<string[]>([]),
+    [expiresInDays, setExpiresInDays] = useState(90),
     [token, setToken] = useState(""),
     [busy, setBusy] = useState(false);
+  const permitted = integrationScopes.filter((scope) =>
+    user?.permissions[scope]?.includes("view"),
+  );
+  const canManage = Boolean(user?.permissions.integrations?.includes("manage"));
   async function createWebhook(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -472,9 +481,7 @@ function BusinessConnections() {
         body: JSON.stringify({
           name,
           url,
-          events: ["orders", "invoices", "payments", "contracts"].filter((s) =>
-            user?.permissions[s]?.includes("view"),
-          ),
+          events,
         }),
       });
       setSecret(r.secret);
@@ -496,10 +503,8 @@ function BusinessConnections() {
         method: "POST",
         body: JSON.stringify({
           name: keyName,
-          scopes: ["orders", "invoices", "payments", "contracts"].filter((s) =>
-            user?.permissions[s]?.includes("view"),
-          ),
-          expiresInDays: 90,
+          scopes: keyScopes,
+          expiresInDays,
         }),
       });
       setToken(r.token);
@@ -516,10 +521,8 @@ function BusinessConnections() {
       <div className="provider-heading">
         <PlugZap size={25} />
         <div>
-          <h2>ERP & accounting connections</h2>
-          <p>
-            Signed business events and scoped API access for your organization.
-          </p>
+          <h2>Business systems & reporting</h2>
+          <p>Connect accounting, ERP and BI tools with access you control.</p>
         </div>
       </div>
       <FormError error={error || data.error} />
@@ -527,26 +530,37 @@ function BusinessConnections() {
         <div>
           <h3>Outgoing webhooks</h3>
           <form onSubmit={createWebhook}>
-            <Field label="Connection name">
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                placeholder="Accounting system"
+            <fieldset
+              className="integration-form-fields"
+              disabled={!canManage || busy}
+            >
+              <Field label="Connection name">
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  placeholder="Accounting system"
+                />
+              </Field>
+              <Field label="HTTPS endpoint">
+                <Input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  required
+                  placeholder="https://your-system.com/partnerhub/events"
+                />
+              </Field>
+              <ScopePicker
+                title="Events to send"
+                values={events}
+                options={modules.filter((scope) => permitted.includes(scope))}
+                onChange={setEvents}
               />
-            </Field>
-            <Field label="HTTPS endpoint">
-              <Input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                required
-                placeholder="https://your-system.com/partnerhub/events"
-              />
-            </Field>
-            <Button disabled={busy} type="submit">
-              Create webhook
-            </Button>
+              <Button disabled={busy || !events.length} type="submit">
+                Create webhook
+              </Button>
+            </fieldset>
           </form>
           {secret && (
             <div className="one-time-secret">
@@ -578,6 +592,7 @@ function BusinessConnections() {
               <Badge status={w.active ? "active" : "closed"} />
               <button
                 className="text-button"
+                disabled={!canManage}
                 onClick={async () => {
                   setError(undefined);
                   try {
@@ -603,18 +618,96 @@ function BusinessConnections() {
             Revoking access takes effect immediately.
           </p>
           <form onSubmit={createToken}>
-            <Field label="Token name">
-              <Input
-                value={keyName}
-                onChange={(e) => setKeyName(e.target.value)}
-                required
-                placeholder="Finance reporting"
+            <fieldset
+              className="integration-form-fields"
+              disabled={!canManage || busy}
+            >
+              <Field label="Token name">
+                <Input
+                  value={keyName}
+                  onChange={(e) => setKeyName(e.target.value)}
+                  required
+                  placeholder="Finance reporting"
+                />
+              </Field>
+              <Field label="Token expiry">
+                <select
+                  className="input"
+                  value={expiresInDays}
+                  onChange={(e) => setExpiresInDays(Number(e.target.value))}
+                >
+                  {[7, 30, 90, 180, 365].map((days) => (
+                    <option key={days} value={days}>
+                      {days} days
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div
+                className="scope-presets"
+                aria-label="Suggested token scopes"
+              >
+                <span>Quick selection</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setKeyScopes(
+                      ["reports", "invoices", "payments"].filter((scope) =>
+                        permitted.includes(scope as (typeof permitted)[number]),
+                      ),
+                    )
+                  }
+                >
+                  Finance reports
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setKeyScopes(
+                      [
+                        "reports",
+                        "requirements",
+                        "rfqs",
+                        "quotations",
+                        "orders",
+                        "deliveries",
+                        "performance",
+                      ].filter((scope) =>
+                        permitted.includes(scope as (typeof permitted)[number]),
+                      ),
+                    )
+                  }
+                >
+                  Procurement reports
+                </button>
+                <button type="button" onClick={() => setKeyScopes([])}>
+                  Clear
+                </button>
+              </div>
+              <ScopePicker
+                title="Data this token can read"
+                values={keyScopes}
+                options={permitted}
+                onChange={setKeyScopes}
               />
-            </Field>
-            <Button type="submit" variant="secondary" disabled={busy}>
-              <KeyRound size={16} />
-              Create 90-day API token
-            </Button>
+              {keyScopes.includes("reports") && keyScopes.length === 1 && (
+                <p className="provider-note">
+                  Select a source module as well to enable reporting.
+                </p>
+              )}
+              <Button
+                type="submit"
+                variant="secondary"
+                disabled={
+                  busy ||
+                  !keyScopes.length ||
+                  (keyScopes.includes("reports") && keyScopes.length === 1)
+                }
+              >
+                <KeyRound size={16} />
+                Create API token
+              </Button>
+            </fieldset>
           </form>
           {token && (
             <div className="one-time-secret">
@@ -644,10 +737,20 @@ function BusinessConnections() {
                 <small>
                   {t.prefix}… · Expires {formatDate(t.expires_at)}
                 </small>
+                <small>Read access: {t.scopes.map(scopeName).join(", ")}</small>
+                <small>
+                  {!t.active
+                    ? "Revoked"
+                    : Date.parse(t.expires_at) <= Date.now()
+                      ? "Expired"
+                      : t.last_used_at
+                        ? `Last used ${formatDate(t.last_used_at)}`
+                        : "Not used yet"}
+                </small>
               </div>
               <button
                 className="text-button"
-                disabled={!t.active}
+                disabled={!t.active || !canManage}
                 onClick={async () => {
                   setError(undefined);
                   try {
@@ -726,5 +829,57 @@ function BusinessConnections() {
         request body.
       </p>
     </section>
+  );
+}
+
+function scopeName(scope: string) {
+  return (
+    moduleDefinitions[scope as Module]?.label ||
+    (
+      {
+        reports: "Reports & analytics",
+        organizations: "Organizations",
+        documents: "Documents",
+      } as Record<string, string>
+    )[scope] ||
+    scope
+  );
+}
+function ScopePicker({
+  title,
+  values,
+  options,
+  onChange,
+}: {
+  title: string;
+  values: string[];
+  options: readonly string[];
+  onChange: (values: string[]) => void;
+}) {
+  return (
+    <fieldset className="integration-scopes">
+      <legend>
+        {title}
+        <span>{values.length} selected</span>
+      </legend>
+      <div>
+        {options.map((scope) => (
+          <label key={scope}>
+            <input
+              type="checkbox"
+              checked={values.includes(scope)}
+              onChange={(e) =>
+                onChange(
+                  e.target.checked
+                    ? [...values, scope]
+                    : values.filter((value) => value !== scope),
+                )
+              }
+            />
+            <span>{scopeName(scope)}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

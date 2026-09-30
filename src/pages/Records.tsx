@@ -12,6 +12,7 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  CalendarDays,
   Columns3,
   Download,
   FileText,
@@ -92,9 +93,17 @@ export default function Records() {
   const definition = moduleDefinitions[kind],
     page = Number(params.get("page") || 1),
     status = params.get("status") || "",
-    creating = params.get("new") === "true";
+    creating = params.get("new") === "true",
+    filtered = Boolean(
+      query ||
+      status ||
+      params.get("from") ||
+      params.get("to") ||
+      params.get("currency") ||
+      params.get("requirement_type"),
+    );
   const result = useApi<any>(
-    `/records/${kind}?${queryString({ page, status, q: params.get("q"), from: params.get("from"), to: params.get("to"), limit: view === "board" ? 100 : 20 })}`,
+    `/records/${kind}?${queryString({ page, status, q: params.get("q"), from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), limit: view === "board" ? 100 : 20 })}`,
     Boolean(definition),
   );
   useEffect(() => {
@@ -151,7 +160,7 @@ export default function Records() {
       >
         <a
           className="button button-secondary"
-          href={`/api/records/${kind}/export?${queryString({ status, q: params.get("q"), from: params.get("from"), to: params.get("to") })}`}
+          href={`/api/records/${kind}/export?${queryString({ status, q: params.get("q"), from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type") })}`}
         >
           <Download size={16} />
           Export
@@ -232,6 +241,31 @@ export default function Records() {
                 </option>
               ))}
             </select>
+            {financial && (
+              <select
+                className="compact-select"
+                aria-label="Filter by currency"
+                value={params.get("currency") || ""}
+                onChange={(e) => setParam("currency", e.target.value)}
+              >
+                <option value="">All currencies</option>
+                {["INR", "USD", "EUR", "GBP"].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            )}
+            {kind === "requirements" && (
+              <select
+                className="compact-select"
+                aria-label="Requirement type"
+                value={params.get("requirement_type") || ""}
+                onChange={(e) => setParam("requirement_type", e.target.value)}
+              >
+                <option value="">All requirements</option>
+                <option value="procurement">Procurement</option>
+                <option value="hiring">Hiring</option>
+              </select>
+            )}
             {kind === "candidates" && (
               <div className="view-toggle">
                 <button
@@ -252,6 +286,32 @@ export default function Records() {
             )}
           </div>
         </div>
+        {(params.get("from") || params.get("to")) && (
+          <div className="record-date-filter" role="status">
+            <CalendarDays size={16} />
+            <span>
+              Created{" "}
+              {params.get("from")
+                ? `from ${formatDate(params.get("from"))}`
+                : ""}{" "}
+              {params.get("to")
+                ? `through ${formatDate(params.get("to"))}`
+                : ""}
+            </span>
+            <button
+              className="text-button"
+              onClick={() => {
+                const next = new URLSearchParams(params);
+                next.delete("from");
+                next.delete("to");
+                next.delete("page");
+                setParams(next);
+              }}
+            >
+              Clear date filter
+            </button>
+          </div>
+        )}
         {result.isPending ? (
           <Loading />
         ) : result.error ? (
@@ -260,17 +320,17 @@ export default function Records() {
           <EmptyState
             icon={<Icon size={27} />}
             title={
-              query || status
+              filtered
                 ? "No matching records"
                 : `Your ${definition.label.toLowerCase()} start here`
             }
             description={
-              query || status
+              filtered
                 ? "Try another search or clear your filters."
                 : `Create your first ${definition.singular.toLowerCase()} to get things moving.`
             }
           >
-            {query || status ? (
+            {filtered ? (
               <Button
                 variant="secondary"
                 onClick={() => {

@@ -121,12 +121,26 @@ export function WorkspaceShowcase({
       const previousProgress = wasInside
         ? (window.scrollY - previous.start) / previous.distance
         : 0;
-      const top = (header?.getBoundingClientRect().height || 80) + 14;
+      const headerHeight = header?.getBoundingClientRect().height || 80;
+      // The small viewport stays stable when a phone's browser controls collapse.
+      // Recalculating the tour from innerHeight on every such resize causes jumps.
+      const viewportHeight =
+        Number.parseFloat(getComputedStyle(container, "::before").height) ||
+        window.innerHeight;
+      const bounds = container.getBoundingClientRect();
+      const wasVisible =
+        bounds.bottom > headerHeight && bounds.top < viewportHeight;
       const height = content.offsetHeight;
-      // A short viewport keeps ordinary tabs, so no content is clipped or trapped.
-      const enabled =
-        !motion.matches && height + top + 20 <= window.innerHeight;
-      const step = Math.max(280, Math.min(520, window.innerHeight * 0.52));
+      const mobile = window.matchMedia("(max-width: 800px)").matches;
+      const top =
+        headerHeight +
+        Math.max(mobile ? 8 : 12, (viewportHeight - headerHeight - height) / 2);
+      // Portrait phones use the compact card. Retain readable, unpinned tabs
+      // only when zoom, landscape, or enlarged text leaves insufficient space.
+      const enabled = !motion.matches && height + top + 12 <= viewportHeight;
+      const step = mobile
+        ? Math.max(180, Math.min(320, viewportHeight * 0.36))
+        : Math.max(280, Math.min(520, viewportHeight * 0.48));
       const distance = step * organizationTypes.length;
       content.style.setProperty("--workspace-top", `${top}px`);
       container.style.setProperty("--workspace-stage-height", `${height}px`);
@@ -136,13 +150,29 @@ export function WorkspaceShowcase({
         window.scrollY + container.getBoundingClientRect().top - top;
       geometry.current = { enabled, start, distance, step };
       setPinned(enabled);
-      if (wasInside && enabled) {
+      if (
+        wasInside &&
+        enabled &&
+        (Math.abs(previous.start - start) > 1 ||
+          Math.abs(previous.distance - distance) > 1)
+      ) {
         window.scrollTo({
           top: start + previousProgress * distance,
           behavior: "instant",
         });
       } else if (wasInside && !enabled) {
         window.scrollTo({ top: start, behavior: "instant" });
+      } else if (
+        !previous.enabled &&
+        previous.distance > 0 &&
+        enabled &&
+        wasVisible
+      ) {
+        // Returning from landscape or enlarged text keeps the chosen workspace.
+        window.scrollTo({
+          top: start + (active.current + 0.25) * step,
+          behavior: "instant",
+        });
       }
       update();
     }
@@ -200,18 +230,29 @@ export function WorkspaceShowcase({
   useEffect(() => {
     const strip = tabs.current;
     const button = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!strip || !button || strip.scrollWidth <= strip.clientWidth) return;
-    const left =
-      button.getBoundingClientRect().left -
-      strip.getBoundingClientRect().left +
-      strip.scrollLeft -
-      (strip.clientWidth - button.offsetWidth) / 2;
-    strip.scrollTo({
-      left,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (!strip || !button) return;
+    function center(behavior: ScrollBehavior) {
+      if (!strip || !button || strip.scrollWidth <= strip.clientWidth) return;
+      const left =
+        button.getBoundingClientRect().left -
+        strip.getBoundingClientRect().left +
+        strip.scrollLeft -
+        (strip.clientWidth - button.offsetWidth) / 2;
+      strip.scrollTo({ left, behavior });
+    }
+    center(
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
         ? "instant"
         : "smooth",
+    );
+    let width = strip.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (strip.clientWidth === width) return;
+      width = strip.clientWidth;
+      center("instant");
     });
+    observer.observe(strip);
+    return () => observer.disconnect();
   }, [index]);
 
   function select(next: number) {
@@ -387,8 +428,12 @@ export function WorkspaceShowcase({
                   : "Scroll to explore"}
               </span>
             )}
-            <a href="#lifecycle">
-              Explore the full workflow <ArrowDown size={14} />
+            <a href="#lifecycle" aria-label="Explore the full workflow">
+              <span className="hub-workspace-skip-desktop">
+                Explore the full workflow
+              </span>
+              <span className="hub-workspace-skip-mobile">Full workflow</span>
+              <ArrowDown size={14} />
             </a>
           </div>
         </div>

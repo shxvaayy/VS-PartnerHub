@@ -520,3 +520,17 @@
     transition: none;
   }
 }
+.breadcrumb {
+  min-width: 0;
+}
+.breadcrumb > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb > .mobile-menu {
+  flex-shrink: 0;
+}
+.topbar-actions {
+  flex-shrink: 0;
+}

@@ -682,7 +682,7 @@ try {
       "hr",
       "draft-requirement",
       {
-        brief: `Pune ke liye 4 React aur TypeScript developers chahiye, experience 5 to 7 years. Remote team, joining by ${date(30)}. Budget abhi confirm nahi hai.`,
+        brief: `Pune ke liye 4 React aur TypeScript developers chahiye, experience 5 to 7 years. Remote team, joining by ${date(30)}. Maximum notice period: 15 days. Budget abhi confirm nahi hai.`,
       },
       "C: Hinglish hiring brief to English structured draft",
       (output) => {
@@ -696,6 +696,8 @@ try {
           /TypeScript/i.test(draft.payload.technology + draft.payload.skills),
         );
         assert(/5.*7/.test(draft.payload.experience));
+        assert(/15/.test(draft.payload.notice_period));
+        english(draft.payload.notice_period);
         assert(/remote/i.test(draft.payload.delivery_requirements));
         assert.equal(draft.payload.budget, 0);
       },

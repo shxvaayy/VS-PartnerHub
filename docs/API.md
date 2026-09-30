@@ -58,7 +58,7 @@ Kinds: `requirements`, `rfqs`, `quotations`, `orders`, `deliveries`, `contracts`
 | GET         | `/records/rfqs/:id/compare`     | Buyer-authorized submitted quotation comparison            |
 | POST        | `/records/contracts/:id/renew`  | `{ end_date, version, note }`; new version requires review |
 
-Lists return `{ items, total, page, limit, can_create }`. Use `q`, `status`, `parent_id`, `category`, `from`, `to`, `page` and `limit` as applicable. Detail responses include `allowed_transitions` and `can_edit`; calculate available actions from these values.
+Lists return `{ items, total, page, limit, can_create }`. Use `q`, `status`, `parent_id`, `category`, `from`, `to`, `currency`, `requirement_type`, `page` and `limit` as applicable. Currency and requirement-type filters also apply to CSV exports and report drill-downs. Detail responses include `allowed_transitions` and `can_edit`; calculate available actions from these values.
 
 Record writes take:
 
@@ -99,27 +99,32 @@ Input monetary values are major currency units. Returned `amount_minor`/`outstan
 
 ## Administration, reporting and notifications
 
-| Method      | Path                            | Purpose                                                 |
-| ----------- | ------------------------------- | ------------------------------------------------------- |
-| GET         | `/dashboard`                    | Scoped KPIs, charts and activity; date/currency filters |
-| GET         | `/search?q=...`                 | Scoped global search                                    |
-| GET         | `/reports/export`               | Management summary CSV                                  |
-| GET         | `/notifications`                | Current user's notifications                            |
-| POST        | `/notifications/:id/read`       | Mark user's notification read                           |
-| POST        | `/notifications/read-all`       | Mark all user's notifications read                      |
-| GET         | `/admin/team`                   | Authorized users and pending invitations                |
-| POST        | `/admin/team/invite`            | `{ name, email, role, organization_id? }`               |
-| PATCH       | `/admin/team/:id`               | Authorized name/role/active-state updates               |
-| DELETE      | `/admin/team/invitations/:id`   | Revoke pending invitation                               |
-| GET         | `/admin/roles`                  | Role permission definitions                             |
-| PATCH       | `/admin/roles/:id`              | Change a permitted role's permission matrix             |
-| GET / PATCH | `/admin/settings`               | Read settings / Super Admin updates                     |
-| GET         | `/admin/audit`                  | Paginated, filtered audit history                       |
-| GET         | `/admin/organizations-export`   | Authorized organization directory CSV                   |
-| GET         | `/admin/email-status`           | Delivery metadata; no message bodies or secrets         |
-| POST        | `/admin/email-status/:id/retry` | Queue a failed email again                              |
+| Method      | Path                            | Purpose                                                   |
+| ----------- | ------------------------------- | --------------------------------------------------------- |
+| GET         | `/dashboard`                    | Scoped KPIs, charts and activity; date/currency filters   |
+| GET         | `/search?q=...`                 | Scoped global search                                      |
+| GET         | `/reports/export`               | Management summary CSV                                    |
+| GET         | `/reports/analytics`            | Eight report views, scoped KPI definitions and datasets   |
+| GET         | `/reports/datasets/:view`       | Audited aggregate CSV; `table`, date and currency filters |
+| GET         | `/reports/power-query`          | Power Query function with no embedded credentials         |
+| GET         | `/notifications`                | Current user's notifications                              |
+| POST        | `/notifications/:id/read`       | Mark user's notification read                             |
+| POST        | `/notifications/read-all`       | Mark all user's notifications read                        |
+| GET         | `/admin/team`                   | Authorized users and pending invitations                  |
+| POST        | `/admin/team/invite`            | `{ name, email, role, organization_id? }`                 |
+| PATCH       | `/admin/team/:id`               | Authorized name/role/active-state updates                 |
+| DELETE      | `/admin/team/invitations/:id`   | Revoke pending invitation                                 |
+| GET         | `/admin/roles`                  | Role permission definitions                               |
+| PATCH       | `/admin/roles/:id`              | Change a permitted role's permission matrix               |
+| GET / PATCH | `/admin/settings`               | Read settings / Super Admin updates                       |
+| GET         | `/admin/audit`                  | Paginated, filtered audit history                         |
+| GET         | `/admin/organizations-export`   | Authorized organization directory CSV                     |
+| GET         | `/admin/email-status`           | Delivery metadata; no message bodies or secrets           |
+| POST        | `/admin/email-status/:id/retry` | Queue a failed email again                                |
 
 All routes enforce server-side role and tenant scope. Administrative settings/roles/users cannot grant an external organization internal VS privileges.
+
+See [ANALYTICS.md](ANALYTICS.md) for report/table IDs, UTC period versus current-snapshot rules, integer minor units, BI setup and source permissions. Read-only bearer counterparts are `/integration/reports/analytics` and `/integration/reports/datasets/:view`; tokens require `reports` plus their source scopes.
 
 ## VS AI
 

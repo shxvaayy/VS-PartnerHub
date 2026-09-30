@@ -202,16 +202,21 @@ export default function RecordForm({
             buyer_org_id: buyer || null,
             currency,
             payload: normalized,
-            items: [
-              "requirements",
-              "rfqs",
-              "quotations",
-              "orders",
-              "invoices",
-              "contracts",
-            ].includes(kind)
-              ? items.map(({ id: _id, ...i }) => i)
-              : [],
+            items:
+              [
+                "requirements",
+                "rfqs",
+                "quotations",
+                "orders",
+                "invoices",
+                "contracts",
+              ].includes(kind) &&
+              !(
+                kind === "requirements" &&
+                normalized.requirement_type === "hiring"
+              )
+                ? items.map(({ id: _id, ...i }) => i)
+                : [],
             invitations,
             ...(record ? { version: record.version } : {}),
             note,

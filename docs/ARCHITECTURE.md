@@ -23,6 +23,7 @@ flowchart LR
 - `server/record-service.ts` validates module payloads, establishes ownership, validates parent relationships and computes commercial data. `server/workflows.ts` enforces status transitions and their prerequisites.
 - `server/organizations.ts` owns profiles, discovery and VS verification. `server/documents.ts` checks authorization on both uploads and downloads.
 - `server/events.ts` writes transaction-linked audit entries and notifications. SMTP delivery is asynchronous and retryable. `server/maintenance.ts` handles expiry reminders, expired credentials and configured candidate retention.
+- `server/analytics.ts` builds eight report views from SQL aggregates under the same module and organization scope. `shared/analytics.ts` defines dataset types and BI source scopes. The browser, CSV exports and bearer BI endpoints use the same calculations; no AI call is needed for reporting.
 - React forms and actions reflect the server's `allowed_transitions` and `can_edit` results. Hiding a button is never the authorization boundary.
 
 ## Data model
@@ -47,6 +48,8 @@ erDiagram
 ```
 
 Timestamps are UTC ISO-8601 strings for consistent behavior on both databases. Dates such as delivery dates are date-only values. Money is stored as integer minor units; percentage values use basis points. `Decimal.js` calculates and rounds totals. No currency conversion is performed; dashboards filter monetary totals by currency.
+
+The tracked [data dictionaries](dictionaries/) map relational tables to logical business entities and document typed payload fields, KPI formulas and dataset columns. Regenerate them with `npm run docs:analytics`, which inspects an empty temporary schema without reading business rows. [ANALYTICS.md](ANALYTICS.md) defines reporting periods, current snapshots, currency rules and external BI connections.
 
 ## Concurrency and consistency
 

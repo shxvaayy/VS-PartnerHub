@@ -4,7 +4,7 @@
 
 A Super Admin configures **Integrations → Email delivery**, or supplies environment variables. SMTP requires host, port, authorized sender and credentials; Resend requires a sending key and verified sender domain. Leave passwords/keys blank when updating other settings to preserve an existing encrypted secret.
 
-1. Save the provider settings. Secrets are encrypted with AES-256-GCM; only presence flags are returned to the browser.
+1. Save the provider settings. The live API uses saved settings immediately; no redeploy is required. Secrets are encrypted with AES-256-GCM; only presence flags are returned to the browser.
 2. Verify the provider connection. Resend sending-only keys may not list domains; use the delivery test in that case.
 3. Enter an approved test recipient and select **Send test email**.
 4. Inspect delivery status and confirm receipt in that mailbox before onboarding partners.
@@ -38,7 +38,7 @@ Conversations belong to their creator. Source and role access are checked before
 
 The integration contract consists of signed outbound events and a scoped read-only API. It is suitable for connecting an ERP/accounting adapter; no external ERP connection is silently created.
 
-Organization administrators create endpoints and tokens in **Integrations → ERP & accounting connections**. Tokens are shown once, stored hashed, expire within 1–365 days and can be revoked. Every request checks the creator's current role and organization status. Token scopes can only narrow the creator's access.
+Organization administrators create endpoints and tokens in **Integrations → Business systems & reporting**. Select explicit source scopes, webhook events and token expiry in the form; Finance and Procurement presets are available. Tokens are shown once, stored hashed, expire within 1–365 days and can be revoked. Every request checks the creator's current role and organization status. Token scopes can only narrow the creator's access.
 
 ```http
 GET /api/integration/records/orders?page=1&limit=50
@@ -46,6 +46,8 @@ Authorization: Bearer <your securely stored token>
 ```
 
 Available module names follow `/api/records/:kind`. Detail is `GET /api/integration/records/:kind/:id`. Only authorized records are returned; draft quotations/invoices are hidden from buyers. The API does not perform writes.
+
+Reporting tokens additionally use `/api/integration/reports/analytics` and `/api/integration/reports/datasets/:view`. Select `reports` plus the permitted source modules; `organizations` and `documents` are available for partner/compliance reporting. The Reports workspace supplies eight dashboards, actual CSV/PDF exports and a credential-free Power Query function. See [ANALYTICS.md](ANALYTICS.md) for definitions, Power BI/Excel/Tableau setup and external publication requirements.
 
 Webhook configuration accepts permitted record modules. Events include an ID, type (`module.action`), UTC creation time, recipient organization and record reference/status. Endpoints must use public HTTPS; an operator can explicitly allow private HTTPS hostnames with `WEBHOOK_ALLOWED_PRIVATE_HOSTS`. DNS results are checked and pinned for each delivery; redirects are not followed.
 
