@@ -40,7 +40,7 @@ function Capture-Screen([string]$Name) {
   } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
 function Get-AppWindow {
-  $processes = @(Get-Process -Name $script:processName -ErrorAction SilentlyContinue)
+  $processes = @(Get-Process -Name $script:processName -ErrorAction SilentlyContinue | Sort-Object @{ Expression = { $_.MainWindowTitle -like '*VS PartnerHub*' }; Descending = $true })
   foreach ($process in $processes) {
     if ($process.MainWindowHandle -ne [IntPtr]::Zero) {
       return [System.Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
@@ -88,8 +88,18 @@ try {
   if ($env:GITHUB_OUTPUT) { Add-Content $env:GITHUB_OUTPUT 'installer_verified=true' }
   $checks.Add(@{ name = 'Official installer hash and Authenticode signature'; passed = $true })
   $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_CHECK=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
-  $installed = Start-Process $installer -ArgumentList $arguments -PassThru -Wait
+  $arguments += @('-log', ('"' + (Join-Path $out 'installer.log') + '"'))
+  Write-Host 'Installer verified; starting the desktop installation.'
+  $installed = Start-Process $installer -ArgumentList $arguments -PassThru
+  # Start-Process -Wait also waits for updater/application descendants. Wait for
+  # the actual installer process, whose exit code is the installation result.
+  if (-not $installed.WaitForExit(480000)) {
+    Capture-Screen 'installer-timeout'
+    $installed.Kill()
+    throw 'The official desktop installer exceeded eight minutes; inspect installer.log.'
+  }
   if ($installed.ExitCode -notin @(0, 3010)) { throw "Desktop installation failed with code $($installed.ExitCode)." }
+  Write-Host "Desktop installation completed with code $($installed.ExitCode)."
   if ($Platform -eq 'power-bi') {
     $application = Join-Path $env:ProgramFiles 'Microsoft Power BI Desktop/bin/PBIDesktop.exe'
     $script:processName = 'PBIDesktop'
@@ -115,6 +125,10 @@ try {
     $controls = @(Read-Controls $window)
     Save-Controls 'latest-controls' $controls
     Capture-Screen 'latest-screen'
+    foreach ($label in @('Not now', 'Continue without signing in', 'Apply changes')) {
+      $action = $controls | Where-Object { $_.name -eq $label -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
+      if ($action) { Invoke-Control $action | Out-Null }
+    }
     if ($Platform -eq 'power-bi' -and -not $refreshed) {
       $refresh = $controls | Where-Object { $_.name -eq 'Refresh' -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
       if ($refresh -and (Invoke-Control $refresh)) { $refreshed = $true; Write-Host 'Requested snapshot refresh in Power BI Desktop.' }
