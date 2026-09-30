@@ -267,6 +267,26 @@ test.describe("Mobile workspace scroll tour", () => {
       exact: true,
     });
     await expect(technology).toHaveAttribute("aria-selected", "true");
+    // Mobile browser controls can reduce 100svh without changing the layout
+    // viewport used by height media queries. Keep the whole card in that space.
+    const browserControls = await page.addStyleTag({
+      content: ".hub-workspace-track::before { height: 600px; }",
+    });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await expect
+      .poll(() =>
+        page
+          .locator(".hub-workspace-stage")
+          .evaluate((el) => el.getBoundingClientRect().bottom),
+      )
+      .toBeLessThan(600);
+    await expect(page.locator(".hub-workspace-track")).toHaveAttribute(
+      "data-scroll",
+      "true",
+    );
+    await expect(technology).toHaveAttribute("aria-selected", "true");
+    await browserControls.evaluate((el) => el.remove());
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
     for (const viewport of [
       { width: 375, height: 667 },
       { width: 375, height: 550 },

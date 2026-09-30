@@ -130,8 +130,14 @@ export function WorkspaceShowcase({
       const bounds = container.getBoundingClientRect();
       const wasVisible =
         bounds.bottom > headerHeight && bounds.top < viewportHeight;
-      const height = content.offsetHeight;
       const mobile = window.matchMedia("(max-width: 800px)").matches;
+      container.dataset.density =
+        mobile && viewportHeight <= 620
+          ? "tight"
+          : mobile && viewportHeight <= 700
+            ? "compact"
+            : "comfortable";
+      const height = content.offsetHeight;
       const top =
         headerHeight +
         Math.max(mobile ? 8 : 12, (viewportHeight - headerHeight - height) / 2);
