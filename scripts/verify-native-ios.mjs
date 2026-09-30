@@ -25,6 +25,30 @@ let fixture, simulator, testedSimulator;
 const cacheChecks = { populated: 0, empty: 0 };
 try {
   fixture = await startNativeFixture({
+    async captureNativeDiagnostics(device) {
+      try {
+        assert.equal(device, simulator);
+        const log = run("xcrun", [
+          "simctl",
+          "spawn",
+          device,
+          "log",
+          "show",
+          "--style",
+          "compact",
+          "--last",
+          "8m",
+          "--predicate",
+          'process == "App" OR process CONTAINS "WebKit"',
+        ]);
+        await fs.writeFile(path.join(out, "simulator-startup.log"), log);
+      } catch (error) {
+        await fs.writeFile(
+          path.join(out, "simulator-diagnostics.json"),
+          JSON.stringify({ error: error.message }),
+        );
+      }
+    },
     async checkNativeCache(state, device, report) {
       assert.equal(
         device,
@@ -214,6 +238,7 @@ try {
         checks,
         testedSimulator,
         cacheChecks,
+        fixtureRequests: fixture?.diagnostics().requests || [],
         isolatedFixtures: true,
         realNativeWebView: true,
         physicalDevice: false,

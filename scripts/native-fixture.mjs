@@ -11,7 +11,10 @@ export const nativeOrigin = "http://127.0.0.1:4207";
 export const controlOrigin = "http://127.0.0.1:4208";
 
 /** Disposable native-acceptance data. Never imports a live environment file. */
-export async function startNativeFixture({ checkNativeCache } = {}) {
+export async function startNativeFixture({
+  checkNativeCache,
+  captureNativeDiagnostics,
+} = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "partnerhub-native-"));
   Object.assign(process.env, {
     NODE_ENV: "test",
@@ -36,12 +39,27 @@ export async function startNativeFixture({ checkNativeCache } = {}) {
   await migrate();
   await seed();
   const app = createApp();
+  const requests = [];
   let server;
   async function online() {
     if (server?.listening) return;
     server = await new Promise((resolve, reject) => {
-      const current = app.listen(4207, "127.0.0.1", () => resolve(current));
+      const current = createServer((req, res) => {
+        const request = {
+          method: req.method,
+          path: new URL(req.url, nativeOrigin).pathname,
+          startedAt: new Date().toISOString(),
+          status: null,
+        };
+        requests.push(request);
+        if (requests.length > 1000) requests.shift();
+        res.once("finish", () => {
+          request.status = res.statusCode;
+        });
+        app(req, res);
+      });
       current.once("error", reject);
+      current.listen(4207, "127.0.0.1", () => resolve(current));
     });
   }
   async function offline() {
@@ -104,6 +122,9 @@ export async function startNativeFixture({ checkNativeCache } = {}) {
       const cacheRequest = req.url?.match(
         /^\/native-cache\/(populated|empty)\/([a-f0-9-]{36})$/i,
       );
+      const diagnosticsRequest = req.url?.match(
+        /^\/native-diagnostics\/([a-f0-9-]{36})$/i,
+      );
       if (req.method === "GET" && req.url === "/health")
         res.end(
           JSON.stringify({ online: !!server?.listening, isolated: true }),
@@ -123,6 +144,13 @@ export async function startNativeFixture({ checkNativeCache } = {}) {
           cacheRequest[1] === "populated" ? await analytics() : undefined,
         );
         res.end("{}");
+      } else if (
+        req.method === "POST" &&
+        diagnosticsRequest &&
+        captureNativeDiagnostics
+      ) {
+        await captureNativeDiagnostics(diagnosticsRequest[1]);
+        res.end("{}");
       } else {
         res.statusCode = 404;
         res.end("{}");
@@ -141,6 +169,7 @@ export async function startNativeFixture({ checkNativeCache } = {}) {
     online,
     offline,
     requirement,
+    diagnostics: () => ({ requests, online: !!server?.listening }),
     async close() {
       if (closed) return;
       closed = true;

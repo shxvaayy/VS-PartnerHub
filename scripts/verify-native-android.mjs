@@ -354,6 +354,7 @@ try {
         }).trim(),
         checks,
         errors,
+        fixtureRequests: fixture?.diagnostics().requests || [],
         isolatedFixtures: true,
         realNativeWebView: true,
         physicalDevice: false,

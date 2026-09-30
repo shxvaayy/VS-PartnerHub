@@ -160,6 +160,9 @@ final class PartnerHubAcceptance: XCTestCase {
 
     override func tearDownWithError() throws {
         if let count = testRun?.failureCount, count > 0 {
+            if let simulator = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] {
+                control("native-diagnostics/\(simulator)")
+            }
             let description = app.debugDescription
             print("PARTNERHUB_NATIVE_HIERARCHY: \(description)")
             let hierarchy = XCTAttachment(string: description)
