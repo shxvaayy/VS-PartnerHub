@@ -18,9 +18,15 @@ if (
   throw new Error(
     "Native applications require an HTTPS workspace. HTTP is limited to explicit local simulator development.",
   );
-if (url.username || url.password || url.search || url.hash)
+if (
+  url.username ||
+  url.password ||
+  url.search ||
+  url.hash ||
+  url.pathname !== "/"
+)
   throw new Error(
-    "Use the workspace origin without credentials, query parameters or fragments.",
+    "Use the workspace origin without credentials, paths, query parameters or fragments.",
   );
 const config: CapacitorConfig = {
   appId: "com.vijaysoftwaresolutions.partnerhub",
