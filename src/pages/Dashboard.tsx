@@ -386,7 +386,7 @@ export default function Dashboard({ reports = false }: { reports?: boolean }) {
         <section
           className={`dashboard-welcome ${hiring ? "welcome-talent" : ""}`}
         >
-          <div>
+          <div className="welcome-copy">
             <span className="welcome-eyebrow">
               <span />
               {hiring

@@ -5870,11 +5870,79 @@ select {
     font-size: 25px;
   }
   .dashboard-welcome {
-    min-height: 187px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    min-height: 0;
   }
   .welcome-art {
-    right: -67px;
-    transform: translateY(-50%) scale(0.7);
+    position: relative;
+    inset: auto;
+    display: grid;
+    grid-template-columns: 60px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 14px;
+    width: 100%;
+    max-width: 350px;
+    height: auto;
+    padding-top: 16px;
+    border-top: 1px solid #d8e5bf;
+    transform: none;
+    justify-self: center;
+    isolation: isolate;
+  }
+  .welcome-art .welcome-center {
+    position: static;
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: 58px;
+    height: 58px;
+    border-radius: 16px;
+    z-index: 1;
+  }
+  .welcome-art .welcome-node {
+    position: static;
+    grid-column: 2;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    transform: none;
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.4;
+    z-index: 1;
+  }
+  .welcome-art .welcome-node > svg {
+    flex-shrink: 0;
+  }
+  .welcome-art .welcome-ring {
+    inset: auto;
+    top: calc(50% + 8px);
+    left: 29px;
+    width: 180px;
+    height: 180px;
+    transform: translate(-50%, -50%);
+  }
+  .welcome-art .ring-b {
+    width: 126px;
+    height: 126px;
+  }
+  .welcome-art .welcome-small-dot {
+    display: none;
+  }
+  .dashboard-welcome .welcome-copy {
+    min-width: 0;
+  }
+  .dashboard-welcome .welcome-copy h2 {
+    font-size: clamp(23px, 4.8vw, 28px);
+  }
+  .dashboard-welcome .welcome-copy p {
+    max-width: none;
+  }
+  .dashboard-welcome .welcome-eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.8px;
+    line-height: 1.6;
   }
   .dashboard-welcome h2 {
     font-size: 24px;
@@ -6414,14 +6482,6 @@ select {
   }
   .dashboard-welcome > div > a {
     font-size: 12px;
-  }
-  .welcome-art {
-    transform: translateY(-50%) scale(0.58);
-    right: -93px;
-    opacity: 0.8;
-  }
-  .dashboard-welcome > div:first-child {
-    z-index: 2;
   }
   .stat-grid {
     gap: 12px;
@@ -7759,17 +7819,6 @@ select {
   .dashboard-welcome p {
     max-width: 185px;
     font-size: 12px;
-  }
-  .welcome-art {
-    right: -122px;
-    transform: translateY(-50%) scale(0.47);
-    opacity: 0.74;
-  }
-  .welcome-node-a {
-    left: 80px;
-  }
-  .welcome-node-c {
-    left: 60px;
   }
   .welcome-eyebrow {
     font-size: 12px;

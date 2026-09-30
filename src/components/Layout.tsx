@@ -234,7 +234,8 @@ export default function Layout() {
         <div className="sidebar-brand-row">
           <Link
             className="sidebar-brand"
-            to="/app"
+            to="/"
+            aria-label="VS PartnerHub home"
             onClick={() => setMobile(false)}
           >
             <Logo light />

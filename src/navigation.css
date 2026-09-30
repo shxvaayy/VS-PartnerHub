@@ -281,6 +281,10 @@
 .sidebar-mobile-shortcuts {
   display: none;
 }
+.hub-header .public-nav-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
 @keyframes partner-drawer-in {
   from {
     transform: translateX(32px);
@@ -510,6 +514,22 @@
   .hub-drawer-bottom {
     padding-left: 18px;
     padding-right: 18px;
+  }
+}
+@media (max-width: 360px) {
+  .hub-header .public-nav {
+    padding-inline: 12px;
+    gap: 6px;
+  }
+  .hub-header .brand {
+    gap: 6px;
+  }
+  .hub-header .brand > span {
+    font-size: 14px;
+  }
+  .hub-header .brand-mark {
+    width: 28px;
+    height: 28px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

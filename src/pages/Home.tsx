@@ -84,11 +84,17 @@ export function PublicHeader() {
           </Link>
         </div>
         <div className="public-nav-actions">
-          <Link className="hub-signin" to={user ? "/app" : "/login"}>
-            {user ? "My workspace" : "Sign in"}
-          </Link>
-          <Link className="button button-primary" to="/register">
-            Get started <ArrowUpRight size={16} />
+          {!user && (
+            <Link className="hub-signin" to="/login">
+              Sign in
+            </Link>
+          )}
+          <Link
+            className="button button-primary"
+            to={user ? "/app" : "/register"}
+          >
+            {user ? "My workspace" : "Get started"}
+            <ArrowUpRight size={16} />
           </Link>
           <button
             className="icon-button hub-menu"
