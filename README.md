@@ -42,6 +42,7 @@ See the [requirement-by-requirement coverage](docs/REQUIREMENTS.md), [review gui
 npm run check
 npm test
 npm run test:postgres
+npx playwright install chromium
 npm run test:e2e
 npm run test:files
 npm run test:production

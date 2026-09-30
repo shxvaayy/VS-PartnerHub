@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type CDPSession, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const names = [
@@ -36,6 +36,51 @@ async function move(page: Page, top: number) {
     (top) => window.scrollTo({ top, behavior: "instant" }),
     top,
   );
+}
+
+async function swipe(page: Page, session: CDPSession, distance: number) {
+  // Wait for the sticky card's new position to reach the compositor before
+  // sending input. A completed scrollTo alone does not guarantee a painted frame.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  const x = page.viewportSize()!.width / 2;
+  const startY = distance < 0 ? 500 : 180;
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y: startY, id: 1 }],
+  });
+  try {
+    // Send native touch input directly; the browser performs the scrolling.
+    // The higher-level gesture synthesizer did not scroll on the Linux runner.
+    for (let step = 1; step <= 16; step++) {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: startY + (distance * step) / 16, id: 1 }],
+      });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+    }
+    // Hold the finger still before lifting so inertia cannot skip another role.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const started = performance.now();
+          function frame() {
+            if (performance.now() - started >= 150) resolve();
+            else requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        }),
+    );
+  } finally {
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  }
 }
 
 test.describe("Public workspace scroll tour", () => {
@@ -209,25 +254,32 @@ test.describe("Mobile workspace scroll tour", () => {
     const geometry = await tour(page);
     const step = geometry.distance / names.length;
     await move(page, geometry.start + step * 0.25);
+    await expect(page.locator(".hub-workspace-stage")).toBeInViewport({
+      ratio: 1,
+    });
     const session = await page.context().newCDPSession(page);
-    for (const [distance, name] of [
-      [-step * 1.1, "Supplier"],
-      [step * 1.1, "Vendor"],
-    ] as const) {
-      await session.send("Input.synthesizeScrollGesture", {
-        x: 185,
-        y: 460,
-        xDistance: 0,
-        yDistance: Math.round(distance),
-        speed: 420,
-        gestureSourceType: "touch",
-        preventFling: true,
-      });
-      await expect(
-        tabs(page).getByRole("tab", { name, exact: true }),
-      ).toHaveAttribute("aria-selected", "true");
+    try {
+      for (const [distance, name] of [
+        [-step * 1.1, "Supplier"],
+        [step * 1.1, "Vendor"],
+      ] as const) {
+        await test.step(`Swipe to ${name}`, async () => {
+          const before = await page.evaluate(() => window.scrollY);
+          await swipe(page, session, distance);
+          await expect
+            .poll(async () => {
+              const after = await page.evaluate(() => window.scrollY);
+              return (after - before) * -Math.sign(distance);
+            })
+            .toBeGreaterThan(step * 0.8);
+          await expect(
+            tabs(page).getByRole("tab", { name, exact: true }),
+          ).toHaveAttribute("aria-selected", "true");
+        });
+      }
+    } finally {
+      await session.detach();
     }
-    await session.detach();
     const buyer = tabs(page).getByRole("tab", {
       name: "Client / Buyer",
       exact: true,

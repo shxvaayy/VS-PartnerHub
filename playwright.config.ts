@@ -23,7 +23,8 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        channel: process.env.CI ? undefined : "chrome",
+        // Use the same Playwright-managed browser locally and in CI by default.
+        channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
         viewport: { width: 1440, height: 1000 },
       },
     },
