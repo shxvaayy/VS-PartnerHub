@@ -1,0 +1,96 @@
+name: Build signed Android release
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Optional increasing Android version code (defaults to workflow run number)
+        type: string
+      version_name:
+        description: Display version
+        default: "1.0.0"
+        type: string
+  push:
+    branches: [main, codex/production-acceptance]
+    paths:
+      - android/**
+      - public/**
+      - src/**
+      - package.json
+      - package-lock.json
+      - capacitor.config.ts
+      - scripts/*android-release*
+      - scripts/prepare-native-offline.mjs
+      - .github/workflows/android-release.yml
+permissions:
+  contents: read
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  MOBILE_SERVER_URL: https://vs-partnerhub.vercel.app
+  PARTNERHUB_ANDROID_VERSION_CODE: ${{ inputs.version_code || github.run_number }}
+  PARTNERHUB_ANDROID_VERSION_NAME: ${{ inputs.version_name || '1.0.0' }}
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Materialize the encrypted repository signing credentials
+        env:
+          PARTNERHUB_ANDROID_KEYSTORE: ${{ secrets.PARTNERHUB_ANDROID_KEYSTORE }}
+          PARTNERHUB_ANDROID_STORE_PASSWORD: ${{ secrets.PARTNERHUB_ANDROID_STORE_PASSWORD }}
+          PARTNERHUB_ANDROID_SIGNING_ESCROW: ${{ secrets.PARTNERHUB_ANDROID_SIGNING_ESCROW }}
+        run: node scripts/prepare-android-release.mjs
+      - name: Build signed release APK and AAB
+        env:
+          PARTNERHUB_ANDROID_REQUIRE_SIGNING: "true"
+          PARTNERHUB_ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/partnerhub-release.p12
+          PARTNERHUB_ANDROID_STORE_PASSWORD: ${{ secrets.PARTNERHUB_ANDROID_STORE_PASSWORD }}
+          PARTNERHUB_ANDROID_KEY_ALIAS: partnerhub-release
+        run: ./android/gradlew -p android --no-daemon --console=plain :app:assembleRelease :app:bundleRelease :app:lintRelease
+      - name: Verify release identity, signatures, HTTPS and packaged files
+        run: node scripts/verify-android-release.mjs
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-partnerhub-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch the exact signed APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: node scripts/verify-android-release-install.mjs
+      - name: Remove plaintext signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/partnerhub-release.p12"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partnerhub-android-release-${{ github.run_number }}
+          path: |
+            artifacts/android-release/
+            android/app/build/reports/lint-results-release.*
+          retention-days: 30

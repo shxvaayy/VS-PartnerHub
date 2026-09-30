@@ -1,5 +1,23 @@
 apply plugin: 'com.android.application'
 
+def releaseKeystore = System.getenv('PARTNERHUB_ANDROID_KEYSTORE_FILE')
+def releasePassword = System.getenv('PARTNERHUB_ANDROID_STORE_PASSWORD')
+def releaseAlias = System.getenv('PARTNERHUB_ANDROID_KEY_ALIAS')
+def signingRequested = [releaseKeystore, releasePassword, releaseAlias].any { it }
+if (signingRequested && ![releaseKeystore, releasePassword, releaseAlias].every { it }) {
+    throw new GradleException('Complete all Android release signing settings; partial signing is not allowed.')
+}
+if (System.getenv('PARTNERHUB_ANDROID_REQUIRE_SIGNING') == 'true' && !signingRequested) {
+    throw new GradleException('This release requires the project signing identity.')
+}
+if (signingRequested && !file(releaseKeystore).isFile()) {
+    throw new GradleException('The Android release keystore file is unavailable.')
+}
+def releaseVersionCode = (System.getenv('PARTNERHUB_ANDROID_VERSION_CODE') ?: '1').toInteger()
+if (releaseVersionCode < 1 || releaseVersionCode > 2100000000) {
+    throw new GradleException('Android version code must be between 1 and 2100000000.')
+}
+
 android {
     namespace = "com.vijaysoftwaresolutions.partnerhub"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +25,8 @@ android {
         applicationId "com.vijaysoftwaresolutions.partnerhub"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode releaseVersionCode
+        versionName (System.getenv('PARTNERHUB_ANDROID_VERSION_NAME') ?: '1.0.0')
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +34,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (signingRequested) {
+            release {
+                storeFile file(releaseKeystore)
+                storeType 'PKCS12'
+                storePassword releasePassword
+                keyAlias releaseAlias
+                keyPassword releasePassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (signingRequested) {
+                signingConfig signingConfigs.release
+            }
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

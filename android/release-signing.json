@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "applicationId": "com.vijaysoftwaresolutions.partnerhub",
+  "alias": "partnerhub-release",
+  "certificateSha256": "3dc0b8f5be3c3c3bdc719ef3202a3997ed68f57824f902cb2880746cb5fd99a8",
+  "subject": "CN=VS PartnerHub Android Release\nO=VS PartnerHub",
+  "validFrom": "2026-09-30T22:35:17.000Z",
+  "validTo": "2056-09-22T22:35:17.000Z",
+  "purpose": "Project-owned Android release identity for direct APK installation. Store publication is a separate action."
+}
