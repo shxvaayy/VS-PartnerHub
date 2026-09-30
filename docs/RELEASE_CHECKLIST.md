@@ -1,6 +1,6 @@
 # Enterprise specification release checklist
 
-Reviewed against the complete **VS_PartnerHub_Enterprise_Product_Documentation (1).docx**, the accompanying 22-section specification and the six explicit AI requirements on 30 September 2026. Field/workflow implementation is mapped in [REQUIREMENTS.md](REQUIREMENTS.md); executed checks and their limits are recorded in [VERIFICATION.md](VERIFICATION.md).
+Reviewed against the complete **VS_PartnerHub_Enterprise_Product_Documentation (1).docx**, the accompanying 22-section specification and the six explicit AI requirements on 1 October 2026. Field/workflow implementation is mapped in [REQUIREMENTS.md](REQUIREMENTS.md); executed checks and their limits are recorded in [VERIFICATION.md](VERIFICATION.md).
 
 The user supplied functional requirements without selecting external provider accounts, a BI tenant, independent backup storage or native distribution. These do not block the application review. See [SUBMISSION_SCOPE.md](SUBMISSION_SCOPE.md) for the distinction between software acceptance and unconfigured external deployments. Live email remains explicitly deferred.
 
@@ -42,7 +42,7 @@ The user supplied functional requirements without selecting external provider ac
 | E. Smart discovery      | All specified business criteria, authorized source profiles, no private KYC, reuse and changed-profile invalidation. Live empty/available records are handled truthfully.                                                                                                                                |
 | F. Operational alerts   | Contract/document expiry, delivery delay, invoice aging, unusual measured activity, recruitment aging and response trends. Thresholds and available evidence are explicit; no invented risk score or automatic decision.                                                                                 |
 
-The additional roadmap work includes catalog/import/export tools, configurable sequential approvals, opt-in marketplace profiles, signed ERP webhooks/scoped integration tokens, installable web behavior and Android/iOS applications. Hosted Android APK/AAB compilation and iPhone simulator build/launch have passed, with packaged offline reconnect checks and retained artifacts; see [MOBILE.md](MOBILE.md). Provider-specific ERP/accounting adapters, qualified signatures and native company signing/device acceptance/distribution need the organization's selected services and identities. They are not labelled as completed integrations.
+The additional roadmap work includes catalog/import/export tools, configurable sequential approvals, opt-in marketplace profiles, signed ERP webhooks/scoped integration tokens, installable web behavior and Android/iOS applications. Hosted Android emulator and iPhone simulator acceptance passed 8/8 checks each, including authenticated downloads/sharing, background refresh, offline reconnect and logout cache removal. Android APK/AAB inspections, lint and iPhone compilation/launch also passed; see [MOBILE.md](MOBILE.md). Provider-specific ERP/accounting adapters, qualified signatures and native company signing/device acceptance/distribution need the organization's selected services and identities. They are not labelled as completed integrations.
 
 ## Remaining operational inputs
 
