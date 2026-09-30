@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { emailSchema, passwordSchema } from "../shared/auth.js";
+import { emailSchema, passwordSchema, phoneSchema } from "../shared/auth.js";
 import { webAddressSchema } from "../shared/urls.js";
 import {
   organizationTypes,
@@ -96,10 +96,7 @@ export const organizationSchema = z.object({
   website: webAddressSchema.default(""),
   contact_name: text(150).min(2),
   contact_email: email,
-  contact_phone: z
-    .string()
-    .trim()
-    .regex(/^[+\d\s()-]{7,25}$/, "Enter a valid phone number."),
+  contact_phone: phoneSchema,
   details: companyDetailsSchema.default({}),
 });
 export const registrationSchema = z
@@ -112,6 +109,16 @@ export const registrationSchema = z
   })
   .superRefine((data, ctx) => {
     const details = data.organization.details;
+    for (const [key, message] of [
+      ["company_type", "Select your company type."],
+      ["contact_role", "Select your authorized contact role."],
+    ] as const)
+      if (!details[key]?.trim())
+        ctx.addIssue({
+          code: "custom",
+          path: ["organization", "details", key],
+          message,
+        });
     const required: Record<string, string[]> = {
       supplier: ["products", "lead_time", "delivery_locations"],
       recruitment: ["domains", "recruiters"],

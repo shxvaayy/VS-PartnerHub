@@ -127,8 +127,13 @@ function acquire(signal?: AbortSignal): Promise<() => void> {
 // never render pages, execute embedded JavaScript or fetch PDF resources.
 const workerCode = `
 const { parentPort, workerData } = require('node:worker_threads');
+// Node 22 can abort the host if termination interrupts native zlib stream
+// initialization. PDF.js has JavaScript fallbacks; use them only in this
+// cancellable isolate so stopping a document cannot take down the API.
+globalThis.DecompressionStream = undefined;
+globalThis.CompressionStream = undefined;
 (async () => {
-  let task;
+  let task, result;
   try {
     const { pathToFileURL } = require('node:url');
     const { getDocument, OPS } = await import(pathToFileURL(workerData.pdfModule).href);
@@ -187,9 +192,10 @@ const { parentPort, workerData } = require('node:worker_threads');
       for (const page of await subset.copyPages(source, ocrPageNumbers.map((number) => number - 1))) subset.addPage(page);
       ocrPdf = await subset.save();
     }
-    parentPort.postMessage({ pages, pageCount: pdf.numPages, textPages, scannedPages, blankPages, complete, ocrPageNumbers, ocrPdf });
-  } catch (error) { parentPort.postMessage({ error: error.name || 'InvalidPDF' }); }
+    result = { pages, pageCount: pdf.numPages, textPages, scannedPages, blankPages, complete, ocrPageNumbers, ocrPdf };
+  } catch (error) { result = { error: error.name || 'InvalidPDF' }; }
   finally { await task?.destroy().catch(() => {}); }
+  parentPort.postMessage(result);
 })();`;
 
 export async function prepareDocument(
@@ -239,9 +245,12 @@ export async function prepareDocument(
         settled = true;
         clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
-        void worker.terminate();
-        if (error) reject(error);
-        else resolve(value);
+        const complete = () => {
+          if (error) reject(error);
+          else resolve(value);
+        };
+        // Keep the concurrency slot until the worker has actually stopped.
+        void worker.terminate().then(complete, complete);
       };
       const cancel = () => {
         try {

@@ -24,3 +24,19 @@ export function emailError(value: string) {
   const result = emailSchema.safeParse(value);
   return result.success ? "" : result.error.issues[0].message;
 }
+
+const phoneHint =
+  "Enter a phone number with 7–15 digits, for example +91 98765 43210.";
+export const phoneSchema = z
+  .string()
+  .trim()
+  .max(40, phoneHint)
+  .refine((value) => {
+    const digits = value.replace(/\D/g, "").length;
+    return /^\+?[0-9 ().-]+$/.test(value) && digits >= 7 && digits <= 15;
+  }, phoneHint);
+
+export function phoneError(value: string) {
+  const result = phoneSchema.safeParse(value);
+  return result.success ? "" : result.error.issues[0].message;
+}

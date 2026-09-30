@@ -2,7 +2,7 @@
 
 ## Vercel deployment
 
-The live application is **https://vs-partnerhub.vercel.app**. `vercel.json` deploys the React frontend and `api/index.ts` together, including direct navigation to login, password recovery and workspace routes. The API runs in Singapore with the connected Neon PostgreSQL database and a **private** Vercel Blob store. Local SQLite accounts and files are not copied to production.
+The live application is **https://vs-partnerhub.vercel.app**. `vercel.json` deploys the React frontend and `api/index.ts` together, including direct navigation to login, password recovery and workspace routes. The API runs in Singapore with the connected Neon PostgreSQL database and a **private** Vercel Blob store. Local SQLite accounts and files are not automatically copied to production; operator-provisioned accounts are separate from ordinary email-verified partner registration.
 
 Production requires `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (migrations), `DATABASE_SSL=true`, `FILE_STORAGE=blob`, `BLOB_READ_WRITE_TOKEN`, `APP_URL`, `SESSION_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, `CRON_SECRET` and `TRUST_PROXY=1`. Configure Gemini through `GEMINI_API_KEY` and `GEMINI_MODEL`. Sensitive values belong in Vercel environment settings; `.vercelignore` also excludes local secrets, databases, uploads and verification artifacts from CLI deployments.
 
@@ -14,7 +14,7 @@ The function explicitly retains background email/webhook work with `waitUntil`. 
 
 For real verification and recovery emails, set `RESEND_API_KEY`, `MAIL_FROM` and optionally `MAIL_REPLY_TO`, or configure SMTP below. Use a company domain verified by the email provider; confirm SPF/DKIM and DMARC alignment, then test actual delivery to the intended inboxes. A working password login does not establish that external email delivery has been configured.
 
-Use `vercel deploy --prod --skip-domain` to validate a production build before promoting it. `vercel curl` can access a protected deployment for authorized checks. Promote a verified deployment with `vercel promote <deployment-url>`; pushes to the connected `main` branch also deploy. Bootstrap an administrator only once using the operator-controlled CLI and a real authorized email address. Never use local example credentials on the live site.
+Use `vercel deploy --prod --skip-domain` to validate a production build before promoting it. `vercel curl` can access a protected deployment for authorized checks. Promote a verified deployment with `vercel promote <deployment-url>`; pushes to the connected `main` branch also deploy. Bootstrap an administrator only once using the operator-controlled CLI and an authorized email address. Deployment never creates a default account, and local demonstration credentials are excluded from the production browser bundle.
 
 `npm run test:cloud` exercises real private Blob uploads, authorization, tampering, replay and restart persistence with a disposable local account database. It reads Blob credentials from the ignored `.env.production.local` (or `CLOUD_ENV_FILE`), removes its cloud test objects and writes `artifacts/local-verification/cloud-storage-report.json`.
 
@@ -96,11 +96,11 @@ location / {
 
 ## Email and scheduled work
 
-Email verification, resets and optional sign-in codes need working SMTP. The local demo retains messages in a local outbox and shows test codes/links; production does not expose these values. Verify the provider's sender/domain configuration, SPF/DKIM and delivery logs with an approved test mailbox before inviting employees.
+Email verification, resets and optional sign-in codes need working SMTP or Resend. The local demo retains messages in a local outbox and shows test codes/links; production does not expose these values. Verify the provider's sender/domain configuration, SPF/DKIM and delivery logs with an approved test mailbox before inviting employees.
 
-The application sends queued mail every 15 seconds, uses row claims and retries temporary failures up to five attempts. Expiry/retention maintenance runs at startup and hourly. Failed messages can be retried by a Super Admin in Settings → Email delivery. SMTP delivery is at-least-once: the same message may be delivered again after an interrupted send.
+Conventional Node hosting polls queued mail every 15 seconds and runs expiry/retention maintenance at startup and hourly. Vercel retains delivery with `waitUntil`, checks queues during traffic and uses a daily authenticated cron for idle periods. Both use database row claims, job leases and up to five attempts for temporary delivery failures. Failed messages can be retried by a Super Admin in Settings → Email delivery. Delivery is at-least-once: the same message may be delivered again after an interrupted send.
 
-Run a single application instance with the supplied configuration. For horizontal scaling, introduce a designated maintenance worker, shared upload storage and distributed rate limits first.
+Multiple instances require PostgreSQL and shared private document storage. The live Vercel configuration supplies both, plus database-backed rate limiting. Keep migrations in the controlled release build and use bounded database pools. Local SQLite and private-directory configurations are intended for one process.
 
 ## Rollout validation
 

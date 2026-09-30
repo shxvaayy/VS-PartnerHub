@@ -2,7 +2,7 @@
 
 ## Request path
 
-The React application uses the same-origin `/api` surface. Vite proxies it during development; Express serves compiled frontend assets in production. There are no client-side secret keys or simulated database writes. Eight incremental migrations add enterprise operations, authentication controls, human document review and private AI analysis reuse without resetting existing workspace data.
+The React application uses the same-origin `/api` surface. Vite proxies it during development. Vercel serves the compiled frontend and routes `/api` to Express; conventional Node hosting serves both through Express. There are no client-side secret keys or simulated database writes. Nine incremental migrations add enterprise operations, authentication controls, human document review, private AI analysis reuse and shared cloud runtime controls without resetting existing workspace data.
 
 ```mermaid
 flowchart LR
@@ -54,7 +54,7 @@ Mutations use transactions and a record `version`. A stale edit receives HTTP 40
 
 The invoicing/payment workflow locks the invoice through its version while reserving pending amounts. Only completed payments reduce outstanding balances; pending/processing payments still reserve spend capacity. Marking the final payment complete moves the invoice to paid in the same transaction.
 
-Documents are staged under random filenames outside the public directory. Metadata and versions are authorized before download. A unique predecessor constraint prevents two renewals from branching from the same document version.
+Documents are staged under random names in private storage. Local/Node hosting uses a private directory; the live deployment uses private Vercel Blob objects. A short-lived upload token is bound to one user, storage path and expected file size. Finalization rechecks access and file contents before saving an immutable document. Metadata and versions are authorized before download. A unique predecessor constraint prevents two renewals from branching from the same document version.
 
 ## Access model
 
@@ -64,9 +64,11 @@ An external buyer sees verified public company capabilities through discovery, w
 
 ## Runtime model
 
-The supplied deployment runs one application process and one PostgreSQL database, with persistent private upload storage. SQLite is suitable for the local demo and smaller single-process installations. The app starts migrations, seeds only in demo mode, serves requests and runs email/maintenance timers.
+The live deployment runs Vercel functions in Singapore with pooled Neon PostgreSQL connections and shared private Blob storage. Migrations run during the release build through the unpooled database connection. Cold starts neither migrate nor seed business data. Database connections verify TLS certificates.
 
-Before running multiple application replicas, move maintenance to a designated worker, provide shared private storage and replace per-process rate limiting with a distributed store. Keep schema migrations as a controlled deployment step. The PostgreSQL adapter is verified by the same integration suite as SQLite; this is not a load-capacity benchmark.
+`server/rate-limits.ts` stores atomic request counters in PostgreSQL using keyed hashes of network identifiers. `server/jobs.ts` uses database leases for maintenance, retains asynchronous delivery with `waitUntil`, and exposes the bearer-authenticated scheduled-maintenance endpoint. Active traffic drains queued work and checks hourly maintenance; a daily Vercel cron runs when traffic is absent. Email/webhook queues claim individual rows and retry interrupted delivery.
+
+For conventional Node/Docker hosting, startup applies migrations and the persistent process runs email/maintenance timers. Demo fixtures are available only through explicit non-production configuration. SQLite remains suitable for local work and single-process installations. Multiple hosts must use the shared PostgreSQL and private Blob configuration, or equivalent shared storage. The PostgreSQL adapter is verified by the same integration suite as SQLite; this is not a load-capacity benchmark.
 
 ## VS AI request boundary
 

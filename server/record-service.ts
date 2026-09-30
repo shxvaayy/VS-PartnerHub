@@ -16,6 +16,7 @@ import { audit, notifyOrganizations } from "./events.js";
 import { startApproval } from "./approvals.js";
 import { calculate, amountMinor } from "./money.js";
 import { webAddressSchema } from "../shared/urls.js";
+import { emailSchema, phoneSchema } from "../shared/auth.js";
 import { date, optionalDate, type RecordInput } from "./validation.js";
 import {
   moduleDefinitions,
@@ -184,8 +185,8 @@ const payloadSchemas: Record<Module, z.ZodType<any>> = {
   candidates: z
     .object({
       ...common,
-      email: z.email(),
-      phone: z.string().regex(/^[+\d\s()-]{7,25}$/),
+      email: emailSchema,
+      phone: phoneSchema,
       skills: required,
       experience: z.coerce.number().min(0).max(70),
       notice_period: text(100).min(1),

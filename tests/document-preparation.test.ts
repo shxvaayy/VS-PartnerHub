@@ -102,4 +102,57 @@ describe("bounded document reading", () => {
     const retry = await prepareDocument(bytes, "application/pdf");
     expect(retry.pageCount).toBe(45);
   });
+
+  it("survives repeated cancellation of compressed PDFs at different read stages", async () => {
+    const bytes = Buffer.from(await (await longPdf(24)).save());
+    for (const stopAt of [0, 1, 5, 10, 0, 1, 5, 10]) {
+      const controller = new AbortController();
+      await expect(
+        prepareDocument(
+          bytes,
+          "application/pdf",
+          controller.signal,
+          ({ pagesRead }) => {
+            if (pagesRead >= stopAt) controller.abort();
+          },
+        ),
+      ).rejects.toMatchObject({ status: 499 });
+    }
+    const retry = await prepareDocument(bytes, "application/pdf");
+    expect(retry.pageCount).toBe(24);
+    expect(retry.text).toContain("section 24.26");
+  });
+
+  it("releases queued document work after concurrent cancellations without losing successful reads", async () => {
+    const bytes = Buffer.from(await (await longPdf(18)).save());
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, index) => {
+        const controller = new AbortController();
+        return prepareDocument(
+          bytes,
+          "application/pdf",
+          controller.signal,
+          ({ pagesRead }) => {
+            if (index % 2 === 0 && pagesRead >= 1) controller.abort();
+          },
+        );
+      }),
+    );
+    for (const [index, result] of results.entries()) {
+      if (index % 2 === 0) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected")
+          expect(result.reason.status).toBe(499);
+      } else {
+        expect(result.status).toBe("fulfilled");
+        if (result.status === "fulfilled") {
+          expect(result.value.pageCount).toBe(18);
+          expect(result.value.text).toContain("section 18.26");
+        }
+      }
+    }
+    expect((await prepareDocument(bytes, "application/pdf")).pageCount).toBe(
+      18,
+    );
+  });
 });

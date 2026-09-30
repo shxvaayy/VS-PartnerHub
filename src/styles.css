@@ -3906,6 +3906,21 @@ select {
   color: var(--muted);
   line-height: 1.65;
 }
+.audit-technical-details {
+  margin-top: 6px;
+}
+.audit-technical-details summary {
+  color: #244e3d;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.audit-technical-details p {
+  margin: 8px 0 0;
+  font:
+    11px / 1.65 ui-monospace,
+    monospace;
+}
 .notification-row {
   display: flex;
   align-items: flex-start;

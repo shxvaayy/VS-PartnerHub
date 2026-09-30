@@ -1154,7 +1154,9 @@ function EditProfile({
                       ? "url"
                       : key === "contact_email"
                         ? "email"
-                        : "text"
+                        : key === "contact_phone"
+                          ? "tel"
+                          : "text"
                   }
                   value={data[key] || ""}
                   onChange={(e) =>

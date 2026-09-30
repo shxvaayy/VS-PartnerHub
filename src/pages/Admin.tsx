@@ -538,6 +538,34 @@ export function Roles() {
     </div>
   );
 }
+function AuditRemarks({
+  action,
+  module,
+  remarks,
+}: {
+  action: string;
+  module: string;
+  remarks?: string;
+}) {
+  const summaries: Record<string, string> = {
+    ai_assisted: "VS AI response saved for the requesting user.",
+    document_extracted: "Document text and fields extracted for human review.",
+    document_extraction_reused:
+      "Unchanged document extraction reused; current validation checked again.",
+  };
+  const summary = module === "ai" && remarks ? summaries[action] : undefined;
+  if (!summary) return <>{remarks || "—"}</>;
+  return (
+    <>
+      <span>{summary}</span>
+      <details className="audit-technical-details">
+        <summary>Technical details</summary>
+        <p>{remarks}</p>
+      </details>
+    </>
+  );
+}
+
 export function Audit() {
   const [query, setQuery] = useState(""),
     [module, setModule] = useState(""),
@@ -646,10 +674,14 @@ export function Audit() {
                     <td>
                       <div className="two-line-cell">
                         <strong>{label(a.action)}</strong>
-                        <small>{label(a.module)}</small>
+                        <small>
+                          {a.module === "ai" ? "VS AI" : label(a.module)}
+                        </small>
                       </div>
                     </td>
-                    <td className="reference-cell">{a.record_number || "—"}</td>
+                    <td className="reference-cell">
+                      {a.record_number || a.record_id || "—"}
+                    </td>
                     <td>
                       {a.new_status ? (
                         <div className="audit-status">
@@ -669,7 +701,13 @@ export function Audit() {
                     <td className="subtle nowrap">
                       {formatTime(a.created_at)}
                     </td>
-                    <td className="audit-remarks">{a.remarks || "—"}</td>
+                    <td className="audit-remarks">
+                      <AuditRemarks
+                        action={a.action}
+                        module={a.module}
+                        remarks={a.remarks}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1049,17 +1087,18 @@ export function Settings() {
                 title="Email delivery"
                 description={
                   settings.data?.emailConfigured
-                    ? "SMTP is configured. The outbox retries temporary delivery failures."
-                    : "SMTP is not configured. Local demo emails are kept in the outbox."
+                    ? "An email provider is configured. Temporary delivery failures are retried automatically."
+                    : "Email delivery is not configured. Connect your company sender to enable verification codes and password-reset emails."
                 }
               />
               <div className="settings-content">
                 <div className="info-banner">
                   <Mail size={22} />
                   <p>
-                    Email provider credentials are configured on the server.
-                    Delivery status is shown below; secret keys and
-                    authentication message contents are never displayed here.
+                    Manage your company sender in{" "}
+                    <Link to="/app/integrations">Integrations</Link>. Delivery
+                    status is shown below. Security codes and password-reset
+                    links remain private.
                   </p>
                 </div>
               </div>

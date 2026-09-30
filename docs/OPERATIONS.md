@@ -2,19 +2,19 @@
 
 ## Routine operations
 
-| Task                    | Procedure                                                                                                         |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Health                  | Probe `/api/health`; HTTP 200 means the API can query its database                                                |
-| Company approval        | Verification center → inspect documents → approve required current versions → approve company                     |
-| Clarification           | Add an actionable note; partner updates the profile/documents and resubmits                                       |
-| Document renewal        | Use Renew on an existing document; the replacement is a new reviewable version                                    |
-| Contract renewal        | Add a new end date and amendment note; the contract returns to review                                             |
-| User access             | Invite through People & access; suspend compromised accounts and review their audit history                       |
-| Email                   | Super Admin → Integrations → Email delivery; inspect failure counts and retry after fixing provider configuration |
-| Expiry/retention worker | Runs at startup/hourly; run `npm run maintenance` or the compiled CLI for an explicit maintenance pass            |
-| Release                 | Back up, run checks, build, apply migrations, restart and verify health/core flows                                |
+| Task                    | Procedure                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Health                  | Probe `/api/health`; HTTP 200 means the API can query its database                                                   |
+| Company approval        | Verification center → inspect documents → approve required current versions → approve company                        |
+| Clarification           | Add an actionable note; partner updates the profile/documents and resubmits                                          |
+| Document renewal        | Use Renew on an existing document; the replacement is a new reviewable version                                       |
+| Contract renewal        | Add a new end date and amendment note; the contract returns to review                                                |
+| User access             | Invite through People & access; suspend compromised accounts and review their audit history                          |
+| Email                   | Super Admin → Integrations → Email delivery; inspect failure counts and retry after fixing provider configuration    |
+| Expiry/retention worker | Vercel: hourly checks during traffic plus daily authenticated cron. Node: startup/hourly. CLI: `npm run maintenance` |
+| Release                 | Back up, run checks, build, apply migrations, restart and verify health/core flows                                   |
 
-The development server uses Vite and a watched API. `npm start` serves the compiled production frontend and API together. Migrations run at startup and are serialized by Knex's migration lock. Destructive rollback is unsupported; deploy a compatible fix or restore a verified backup into a clean environment.
+The development server uses Vite and a watched API. `npm start` serves the compiled production frontend and API together. Conventional Node hosting applies migrations at startup; Vercel applies them during the release build before publishing functions. Knex serializes migrations with its migration lock. Destructive rollback is unsupported; deploy a compatible fix or restore a verified backup into a clean environment.
 
 ## What to back up
 
@@ -75,7 +75,13 @@ Audit retention defaults to a seven-year minimum policy. Logs are not automatica
 
 Suspend an affected user/organization, preserve the relevant audit range and application/database logs, and investigate using restricted access. Fix the root cause, reset affected passwords and restore access through an authorized administrator. Review provider credentials and rotate any exposed secrets. Avoid exporting unnecessary candidate/KYC data into tickets or public issues.
 
-Monitor health failures, 5xx responses, SMTP failures, disk space, backup results, database connection usage and document-expiry volume. Per-process rate limits and in-process workers require a single designated runtime until distributed infrastructure is added.
+Monitor health failures, 5xx responses, email failures, storage capacity, backup results, database connection usage and document-expiry volume. The Vercel deployment uses shared PostgreSQL request limits, database job leases and private Blob storage. Review cron execution and outbox retries as well as request logs; a healthy HTTP response alone does not verify background delivery. Conventional SQLite/local-file hosting remains a single-process configuration.
+
+## Managed PostgreSQL and private Blob recovery
+
+The live deployment stores metadata in Neon PostgreSQL and document bytes in private Vercel Blob. Preserve both as a coordinated backup set. Use the provider's approved database backup/restore tooling or a certificate-verified `pg_dump`, and export the private objects referenced by the corresponding document metadata. Include immutable document hashes and the deployed revision in the manifest. Staging upload objects are temporary and are not substitutes for finalized documents.
+
+Restore rehearsals must use a separate database and private store, with scheduled jobs and external email/webhook delivery disabled. Check the same authentication, record-chain and document-download steps listed above before any traffic switch. The local SQLite restore and cloud-storage acceptance tests do not certify a managed off-site restore or a recovery SLA; that deployment drill and the organization's backup destination remain operational requirements.
 
 ## AI operations
 

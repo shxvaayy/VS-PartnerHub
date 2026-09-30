@@ -1078,7 +1078,7 @@ export default function Home() {
         <section className="hub-ai">
           <div className="hub-ai-copy">
             <span className="hub-ai-badge">
-              <Sparkles size={15} /> MEET VS AI · POWERED BY GEMINI
+              <Sparkles size={15} /> MEET VS AI · YOUR WORKSPACE ASSISTANT
             </span>
             <h2>
               A clearer view.

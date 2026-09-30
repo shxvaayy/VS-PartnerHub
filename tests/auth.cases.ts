@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import supertest from "supertest";
 import { demoPassword } from "../shared/demo.js";
-import { emailSchema } from "../shared/auth.js";
+import { emailSchema, phoneSchema } from "../shared/auth.js";
 import { companyDetailsSchema } from "../server/validation.js";
 
 export function authCases(h: any) {
@@ -23,6 +23,8 @@ export function authCases(h: any) {
         contact_email: email,
         contact_phone: "+91 9000000010",
         details: {
+          company_type: "Private Limited",
+          contact_role: "Authorized Representative",
           description: "Isolated authentication acceptance verification.",
           services: "Software services",
           capabilities: "Software delivery",
@@ -52,6 +54,29 @@ export function authCases(h: any) {
         .post(`/api/auth${path}`)
         .set("X-CSRF-Token", account.csrfToken)
         .send(data);
+    it("accepts formatted international phone numbers and rejects text, punctuation-only and invalid lengths", () => {
+      for (const valid of [
+        "+91 98765 43210",
+        "+1 (415) 555-0138",
+        "(020) 7946 0018",
+        "202.555.0138",
+        "5550123",
+        "+123456789012345",
+      ])
+        expect(phoneSchema.parse(`  ${valid}  `)).toBe(valid);
+      for (const invalid of [
+        "",
+        "-------",
+        "+ () . -",
+        "123456",
+        "+1234567890123456",
+        "phone number",
+        "+91+9876543210",
+        "9876543210<script>",
+        "123\n4567",
+      ])
+        expect(phoneSchema.safeParse(invalid).success, invalid).toBe(false);
+    });
     it("validates complete email addresses and optional company email without inventing a Gmail ban", async () => {
       expect(emailSchema.parse("  Partner.Name+sales@Company.CO.IN  ")).toBe(
         "partner.name+sales@company.co.in",

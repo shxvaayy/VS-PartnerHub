@@ -105,6 +105,14 @@ test("recruitment onboarding, document review and VS approval work through the b
   })) {
     await page.locator(`form [name="${name}"]`).fill(value);
   }
+  const phone = page.getByLabel("Phone number", { exact: true });
+  await phone.fill("-------");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(phone).toBeVisible();
+  expect(
+    await phone.evaluate((input: HTMLInputElement) => input.validationMessage),
+  ).toContain("7–15 digits");
+  await phone.fill("+91 9000000000");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   for (const [name, value] of Object.entries({
     legal_name: "Browser Recruitment Company",

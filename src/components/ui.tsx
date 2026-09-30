@@ -13,7 +13,7 @@ import {
   type InputHTMLAttributes,
   type ChangeEvent,
 } from "react";
-import { emailError } from "../../shared/auth";
+import { emailError, phoneError } from "../../shared/auth";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
@@ -353,10 +353,17 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
       );
     if (props.type === "url")
       input.setCustomValidity(webAddressError(input.value));
+    if (props.type === "tel")
+      input.setCustomValidity(
+        input.value && (input.value.trim() || props.required)
+          ? phoneError(input.value)
+          : "",
+      );
   };
   return (
     <input
       className="input"
+      {...(props.type === "tel" ? { maxLength: 40 } : {})}
       {...(["email", "url"].includes(props.type || "")
         ? {
             autoCapitalize: "none",

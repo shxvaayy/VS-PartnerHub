@@ -7,6 +7,7 @@ import { assert } from "./errors.js";
 import { authenticated, can, permit } from "./security.js";
 import { audit } from "./events.js";
 import { date, email, pagination, uuid } from "./validation.js";
+import { phoneSchema } from "../shared/auth.js";
 import type { SessionUser } from "../shared/domain.js";
 import {
   deleteStoredFile,
@@ -36,14 +37,27 @@ function contactAccess(user: SessionUser, id: string, edit = false) {
     "Your role cannot access these organization contacts.",
   );
 }
-const contactSchema = z.object({
-  name: z.string().trim().min(2).max(180),
-  email,
-  phone: z.string().trim().max(50).default(""),
-  role: z.string().trim().min(2).max(120),
-  active: z.boolean().default(true),
-  is_primary: z.boolean().default(false),
-});
+const contactSchema = z
+  .object({
+    name: z.string().trim().min(2).max(180),
+    email,
+    phone: z
+      .string()
+      .trim()
+      .pipe(z.union([phoneSchema, z.literal("")]))
+      .default(""),
+    role: z.string().trim().min(2).max(120),
+    active: z.boolean().default(true),
+    is_primary: z.boolean().default(false),
+  })
+  .superRefine((data, ctx) => {
+    if (data.is_primary && !data.phone)
+      ctx.addIssue({
+        code: "custom",
+        path: ["phone"],
+        message: "A phone number is required for the primary company contact.",
+      });
+  });
 partnerOperationsRouter.get("/organizations/:id/contacts", async (req, res) => {
   const id = uuid.parse(req.params.id);
   contactAccess(req.user, id);

@@ -12,6 +12,7 @@ export type FieldDef = {
     | "select"
     | "url"
     | "email"
+    | "tel"
     | "checkbox";
   required?: boolean;
   options?: string[];
@@ -187,7 +188,7 @@ export const formFields: Record<Module, FieldDef[]> = {
   ],
   candidates: [
     field("email", "Candidate email", { type: "email", required: true }),
-    text("phone", "Phone number", true),
+    field("phone", "Phone number", { type: "tel", required: true }),
     text("skills", "Skills", true),
     number("experience", "Experience (years)"),
     location,

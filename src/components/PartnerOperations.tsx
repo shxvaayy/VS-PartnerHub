@@ -171,11 +171,11 @@ export function ContactsPanel({
                   defaultValue={editing.email}
                 />
               </Field>
-              <Field label="Phone">
+              <Field label="Phone" required={Boolean(editing.is_primary)}>
                 <Input
                   name="phone"
                   type="tel"
-                  maxLength={50}
+                  required={Boolean(editing.is_primary)}
                   defaultValue={editing.phone}
                 />
               </Field>
@@ -183,7 +183,10 @@ export function ContactsPanel({
                 <input
                   name="is_primary"
                   type="checkbox"
-                  defaultChecked={editing.is_primary}
+                  checked={Boolean(editing.is_primary)}
+                  onChange={(event) =>
+                    setEditing({ ...editing, is_primary: event.target.checked })
+                  }
                 />
                 Primary company contact
               </label>

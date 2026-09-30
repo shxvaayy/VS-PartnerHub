@@ -490,6 +490,7 @@ describe("dynamic registration, verification and private documents", () => {
         contact_email: `${suffix}@onboarding.example`,
         contact_phone: "+91 98765 43210",
         details: {
+          company_type: "Private Limited",
           contact_role: "Authorized Representative",
           description: "Verified test company offering enterprise services.",
           capabilities: "Enterprise delivery and support",
@@ -534,6 +535,76 @@ describe("dynamic registration, verification and private documents", () => {
     expect(
       (await supertest(app).post("/api/auth/register").send(data)).status,
     ).toBe(422);
+  });
+  it("requires company identity and a contact role for every organization type before creating an account", async () => {
+    for (const type of organizationTypes) {
+      for (const value of [undefined, ""]) {
+        const data = registration(type, `missing-identity-${type}`);
+        const details: Record<string, unknown> = {
+          ...data.organization.details,
+        };
+        details.company_type = value;
+        details.contact_role = value;
+        const response = await supertest(app)
+          .post("/api/auth/register")
+          .send({ ...data, organization: { ...data.organization, details } });
+        expect(response.status, JSON.stringify(response.body)).toBe(422);
+        const fields = response.body.details.map((issue: any) => issue.field);
+        // Invalid enum values may prevent object-level refinement; missing values
+        // must identify both omitted fields explicitly.
+        expect(fields).toContain("organization.details.contact_role");
+        if (value === undefined)
+          expect(fields).toContain("organization.details.company_type");
+        expect(
+          await db("users").where({ email: data.email }).first(),
+        ).toBeUndefined();
+        expect(
+          await db("organizations")
+            .where({ contact_email: data.email })
+            .first(),
+        ).toBeUndefined();
+      }
+      const data = registration(type, `blank-company-type-${type}`);
+      data.organization.details.company_type = "   ";
+      const response = await supertest(app)
+        .post("/api/auth/register")
+        .send(data);
+      expect(response.status).toBe(422);
+      expect(response.body.details).toContainEqual({
+        field: "organization.details.company_type",
+        message: "Select your company type.",
+      });
+    }
+  });
+  it("rejects invalid primary phone numbers without creating an organization", async () => {
+    for (const phone of [
+      "-------",
+      "123456",
+      "+1234567890123456",
+      "call-me-now",
+    ]) {
+      const data = registration("supplier", "invalid-phone");
+      data.organization.contact_phone = phone;
+      const response = await supertest(app)
+        .post("/api/auth/register")
+        .send(data);
+      expect(response.status, phone).toBe(422);
+      expect(
+        response.body.details.some(
+          (issue: any) => issue.field === "organization.contact_phone",
+        ),
+      ).toBe(true);
+    }
+    expect(
+      await db("users")
+        .where({ email: "invalid-phone@onboarding.example" })
+        .first(),
+    ).toBeUndefined();
+    expect(
+      await db("organizations")
+        .where({ contact_email: "invalid-phone@onboarding.example" })
+        .first(),
+    ).toBeUndefined();
   });
   it("does not permit transactions before email and VS verification", async () => {
     expect(
@@ -1043,6 +1114,15 @@ describe("recruitment, staffing, service and technology operations", () => {
     );
     await post("recruiter", "/records/candidates", data, 422);
     data.payload.consent = true;
+    await post(
+      "recruiter",
+      "/records/candidates",
+      {
+        ...data,
+        payload: { ...data.payload, phone: "-------" },
+      },
+      422,
+    );
     candidate = await post("recruiter", "/records/candidates", data, 201);
     expect(candidate.payload.retention_until).toBeTruthy();
     await post("recruiter", "/records/candidates", data, 409);

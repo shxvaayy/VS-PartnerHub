@@ -280,6 +280,8 @@ export function enterpriseCases(h: any) {
             contact_email: email,
             contact_phone: "+91 9000000001",
             details: {
+              company_type: "Private Limited",
+              contact_role: "Authorized Representative",
               description: "Isolated SMTP verification fixture",
               capabilities: "Software services",
               services: "Software delivery",
@@ -1522,6 +1524,34 @@ export function enterpriseCases(h: any) {
         `/organizations/${org("vendor")}/contacts`,
         data,
         201,
+      );
+      for (const phone of ["", "-------", "123456", "unknown"])
+        await patch(
+          "vendor",
+          `/organizations/${org("vendor")}/contacts/${first.id}`,
+          { ...data, phone },
+          422,
+        );
+      expect(
+        (await get("vendor", `/organizations/${org("vendor")}`)).contact_phone,
+      ).toBe(data.phone);
+      const secondary = await post(
+        "vendor",
+        `/organizations/${org("vendor")}/contacts`,
+        {
+          ...data,
+          name: "QA Secondary Contact",
+          email: "secondary@qa.example",
+          phone: " ",
+          is_primary: false,
+        },
+        201,
+      );
+      await patch(
+        "vendor",
+        `/organizations/${org("vendor")}/contacts/${secondary.id}`,
+        { ...data, phone: "", is_primary: true },
+        422,
       );
       await post(
         "vendor",
