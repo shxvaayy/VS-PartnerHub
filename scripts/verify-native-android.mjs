@@ -12,7 +12,8 @@ const expect = playwrightExpect.configure({ timeout: 30000 });
 const out = path.resolve("artifacts/native-verification/android-acceptance");
 await fs.mkdir(out, { recursive: true });
 const checks = [],
-  errors = [];
+  errors = [],
+  fileIntegrity = [];
 let fixture, device, page;
 const adb = (args) =>
   execFileSync("adb", args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
@@ -20,6 +21,55 @@ async function check(name, action) {
   await action();
   checks.push({ name, passed: true });
   console.log("PASS " + name);
+}
+async function readPrivateFile(file, source) {
+  assert(
+    /^cache\/partnerhub-exports\/[a-f0-9-]+\/[^/]+$/.test(file),
+    "Inspect only a generated private export.",
+  );
+  const quoted = "'" + file.replaceAll("'", "'\\''") + "'";
+  const size = Number(
+    adb(["shell", "-T", `run-as ${pkg} stat -c %s ${quoted}`]).trim(),
+  );
+  const remoteHash = adb([
+    "shell",
+    "-T",
+    `run-as ${pkg} sha256sum ${quoted}`,
+  ]).match(/^[a-f0-9]{64}/)?.[0];
+  assert(remoteHash, "The app container must report its actual file hash.");
+  // Read printable data through the shell-v2 protocol. Verify the transfer
+  // against the hash calculated inside the app container and the HTTP body.
+  const encoded = adb([
+    "shell",
+    "-T",
+    `run-as ${pkg} base64 ${quoted}`,
+  ]).replace(/\s/g, "");
+  assert(/^[A-Za-z0-9+/]*={0,2}$/.test(encoded));
+  const bytes = Buffer.from(encoded, "base64");
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const evidence = {
+    filename: path.basename(file),
+    cacheBytes: size,
+    transferredBytes: bytes.length,
+    sourceBytes: source.length,
+    cacheSha256: remoteHash,
+    transferredSha256: digest(bytes),
+    sourceSha256: digest(source),
+  };
+  fileIntegrity.push(evidence);
+  await fs.writeFile(path.join(out, path.basename(file)), bytes);
+  await fs.writeFile(
+    path.join(out, "file-integrity.json"),
+    JSON.stringify(fileIntegrity, null, 2),
+  );
+  assert.equal(bytes.length, size, "The entire cached file must be read.");
+  assert.equal(evidence.transferredSha256, remoteHash);
+  assert.equal(
+    remoteHash,
+    evidence.sourceSha256,
+    "The file saved by the app must match the actual HTTP response byte for byte.",
+  );
+  return bytes;
 }
 async function navigate(name) {
   await page
@@ -100,6 +150,10 @@ try {
       const report = await page.evaluate(() =>
         fetch("/api/reports/analytics").then((r) => r.json()),
       );
+      const downloading = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/reports/power-bi",
+      );
       await page
         .getByRole("button", { name: "Download Power BI project", exact: true })
         .click();
@@ -108,6 +162,10 @@ try {
           timeout: 30000,
         })
         .toMatch(/ChooserActivity/);
+      const response = await downloading;
+      assert.equal(response.status(), 200);
+      const original = await response.body();
+      await fs.writeFile(path.join(out, "http-report.zip"), original);
       await device.screenshot({
         path: path.join(out, "native-file-sharing.png"),
       });
@@ -131,13 +189,7 @@ try {
         file,
         "The archive must be held in the application's private cache.",
       );
-      const bytes = execFileSync("adb", [
-        "exec-out",
-        "run-as",
-        pkg,
-        "cat",
-        file,
-      ]);
+      const bytes = await readPrivateFile(file, original);
       const source = JSON.parse(
         strFromU8(unzipSync(bytes)["data/analytics.json"]),
       );
@@ -183,13 +235,7 @@ try {
         .split(/\r?\n/);
       const file = files.find((name) => name.endsWith(".pdf"));
       assert(file, "The private PDF must be prepared in the app cache.");
-      const cached = execFileSync("adb", [
-        "exec-out",
-        "run-as",
-        pkg,
-        "cat",
-        file,
-      ]);
+      const cached = await readPrivateFile(file, original);
       assert.equal(
         createHash("sha256").update(cached).digest("hex"),
         createHash("sha256").update(original).digest("hex"),
@@ -354,6 +400,7 @@ try {
         }).trim(),
         checks,
         errors,
+        fileIntegrity,
         fixtureRequests: fixture?.diagnostics().requests || [],
         isolatedFixtures: true,
         realNativeWebView: true,
