@@ -24,6 +24,17 @@ final class PartnerHubAcceptance: XCTestCase {
         element.tap()
     }
 
+    func enter(_ text: String, into element: XCUIElement) {
+        // A first tap during WebView activation can arrive before keyboard
+        // focus. Retry the real tap while the software keyboard appears;
+        // typeText still requires native focus, including hardware keyboards.
+        for _ in 0..<3 {
+            tap(element)
+            if app.keyboards.firstMatch.waitForExistence(timeout: 3) { break }
+        }
+        element.typeText(text)
+    }
+
     func navigate(_ label: String) {
         tap(app.buttons["Open navigation"].firstMatch)
         let panel = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH %@", "Main navigation")).firstMatch
@@ -106,11 +117,10 @@ final class PartnerHubAcceptance: XCTestCase {
         app.launch()
         let email = app.textFields.firstMatch
         XCTAssertTrue(email.waitForExistence(timeout: 45))
-        email.tap()
-        email.typeText("admin@vs.example")
+        enter("admin@vs.example", into: email)
+        XCTAssertEqual(email.value as? String, "admin@vs.example")
         let password = app.secureTextFields.firstMatch
-        password.tap()
-        password.typeText("PartnerHub@2026")
+        enter("PartnerHub@2026", into: password)
         tap(app.buttons["Sign in to PartnerHub"].firstMatch)
         XCTAssertTrue(app.buttons["Open navigation"].firstMatch.waitForExistence(timeout: 30))
         record("Real iPhone WebView login and authorized workspace")
