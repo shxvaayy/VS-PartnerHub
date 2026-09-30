@@ -383,7 +383,7 @@ export default function PowerBiPreview({
           description="KPI calculation & source"
           onClose={() => setMetric(null)}
         >
-          <div className="bi-metric-detail">
+          <div className="modal-body bi-metric-detail">
             <strong>
               {biValue(metric.value, metric.format, report.currency)}
             </strong>

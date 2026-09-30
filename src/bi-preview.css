@@ -474,6 +474,7 @@
   font-size: 34px;
   color: #24482d;
   margin: 8px 0;
+  overflow-wrap: anywhere;
 }
 .bi-metric-detail > span {
   color: #596c5d;

@@ -564,7 +564,7 @@ export default function Reports() {
           description={scopeLabel(definition.scope)}
           onClose={() => setDefinition(null)}
         >
-          <div className="analytics-definition">
+          <div className="modal-body analytics-definition">
             <strong>
               {display(definition.value, definition.format, currency)}
             </strong>
@@ -588,7 +588,7 @@ export default function Reports() {
           description={`${selected.title} · ${formatDate(from)} – ${formatDate(to)}`}
           onClose={() => setExportOpen(false)}
         >
-          <div className="analytics-export">
+          <div className="modal-body analytics-export">
             <Field label="Export dataset">
               <select
                 className="input"
