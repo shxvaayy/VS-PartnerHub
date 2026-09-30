@@ -34,9 +34,17 @@ export function WorkspaceShowcase({
   workspaces: Record<OrganizationType, Workspace>;
 }) {
   const track = useRef<HTMLDivElement>(null);
+  const presentation = useRef<HTMLDivElement>(null);
+  const intro = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
-  const geometry = useRef({ enabled: false, start: 0, distance: 0, step: 0 });
+  const geometry = useRef({
+    enabled: false,
+    start: 0,
+    distance: 0,
+    step: 0,
+    leading: 0,
+  });
   const active = useRef(0);
   const pending = useRef<number | null>(null);
   const resume = useRef<() => void>(() => {});
@@ -64,8 +72,10 @@ export function WorkspaceShowcase({
 
   useEffect(() => {
     const container = track.current;
-    const content = stage.current;
-    if (!container || !content) return;
+    const group = presentation.current;
+    const heading = intro.current;
+    const card = stage.current;
+    if (!container || !group || !heading || !card) return;
     const header = document.querySelector<HTMLElement>(".public-header");
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0;
@@ -75,17 +85,20 @@ export function WorkspaceShowcase({
     function update() {
       frame = 0;
       const current = geometry.current;
-      if (!current.enabled || !container || !content) return;
+      if (!current.enabled || !container || !group || !card) return;
       const top = Number.parseFloat(
-        content.style.getPropertyValue("--workspace-top"),
+        group.style.getPropertyValue("--workspace-top"),
       );
       current.start =
-        window.scrollY + container.getBoundingClientRect().top - top;
+        window.scrollY +
+        container.getBoundingClientRect().top +
+        current.leading -
+        top;
       const progress = Math.max(
         0,
         Math.min(1, (window.scrollY - current.start) / current.distance),
       );
-      content.style.setProperty("--workspace-progress", String(progress));
+      card.style.setProperty("--workspace-progress", String(progress));
       if (pending.current !== null) return;
       activate(
         Math.min(
@@ -112,7 +125,7 @@ export function WorkspaceShowcase({
     }
     function measure() {
       resizeFrame = 0;
-      if (!container || !content) return;
+      if (!container || !group || !heading || !card) return;
       const previous = geometry.current;
       const wasInside =
         previous.enabled &&
@@ -134,9 +147,17 @@ export function WorkspaceShowcase({
       container.dataset.density =
         mobile && viewportHeight <= 620
           ? "tight"
-          : mobile && viewportHeight <= 700
+          : (mobile && viewportHeight <= 700) ||
+              (!mobile && viewportHeight <= 850)
             ? "compact"
             : "comfortable";
+      // Desktop pins the heading and card as one presentation. On a phone,
+      // preserve the compact card's full touch area below the section heading.
+      const content = mobile ? card : group;
+      const leading = mobile
+        ? heading.offsetHeight +
+          Number.parseFloat(getComputedStyle(heading).marginBottom)
+        : 0;
       const height = content.offsetHeight;
       const top =
         headerHeight +
@@ -148,13 +169,16 @@ export function WorkspaceShowcase({
         ? Math.max(180, Math.min(320, viewportHeight * 0.36))
         : Math.max(280, Math.min(520, viewportHeight * 0.48));
       const distance = step * organizationTypes.length;
-      content.style.setProperty("--workspace-top", `${top}px`);
-      container.style.setProperty("--workspace-stage-height", `${height}px`);
+      group.style.setProperty("--workspace-top", `${top}px`);
+      container.style.setProperty(
+        "--workspace-stage-height",
+        `${height + leading}px`,
+      );
       container.style.setProperty("--workspace-distance", `${distance}px`);
       container.dataset.scroll = String(enabled);
       const start =
-        window.scrollY + container.getBoundingClientRect().top - top;
-      geometry.current = { enabled, start, distance, step };
+        window.scrollY + container.getBoundingClientRect().top + leading - top;
+      geometry.current = { enabled, start, distance, step, leading };
       setPinned(enabled);
       if (
         wasInside &&
@@ -207,7 +231,9 @@ export function WorkspaceShowcase({
       settleTimer = window.setTimeout(releaseSelection, 250);
     };
     const observer = new ResizeObserver(scheduleMeasure);
-    observer.observe(content);
+    observer.observe(group);
+    observer.observe(heading);
+    observer.observe(card);
     if (header) observer.observe(header);
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scrollend", releaseSelection);
@@ -299,148 +325,152 @@ export function WorkspaceShowcase({
       id="workspaces"
       aria-labelledby="workspace-heading"
     >
-      <div className="hub-section-heading">
-        <div>
-          <span className="hub-eyebrow">YOUR ROLE. YOUR WORKSPACE.</span>
-          <h2 id="workspace-heading">
-            A shared platform.
-            <br />A space that feels like yours.
-          </h2>
-        </div>
-        <p>
-          Different businesses need different tools. Explore the workspace that
-          fits the way you work.
-        </p>
-      </div>
       <div className="hub-workspace-track" ref={track}>
-        <div
-          className="hub-workspace-stage"
-          ref={stage}
-          data-direction={direction > 0 ? "forward" : "backward"}
-        >
-          <div
-            className="hub-workspace-tabs"
-            ref={tabs}
-            role="tablist"
-            onKeyDown={onTabKey}
-            aria-label="Organization workspaces"
-          >
-            {organizationTypes.map((type, i) => (
-              <button
-                key={type}
-                type="button"
-                id={`workspace-tab-${type}`}
-                role="tab"
-                aria-controls={`workspace-panel-${type}`}
-                tabIndex={index === i ? 0 : -1}
-                aria-selected={index === i}
-                onClick={() => select(i)}
-              >
-                {organizationLabels[type]}
-                <span className="hub-workspace-tab-line" aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-          <div className="hub-workspace-panels">
-            {organizationTypes.map((type, i) => {
-              const selected = workspaces[type];
-              const Icon = organizationIcons[type];
-              const current = index === i;
-              return (
-                <div
-                  key={type}
-                  className={`hub-workspace-panel${current ? " is-active" : ""}`}
-                  role="tabpanel"
-                  tabIndex={current ? 0 : -1}
-                  id={`workspace-panel-${type}`}
-                  aria-labelledby={`workspace-tab-${type}`}
-                  aria-hidden={!current}
-                  inert={!current}
-                >
-                  <div className="hub-workspace-copy">
-                    <span className="hub-workspace-type">
-                      <Icon size={20} />
-                      {organizationLabels[type]}
-                    </span>
-                    <h3>{selected.heading}</h3>
-                    <p className="hub-workspace-description">{selected.copy}</p>
-                    <ul>
-                      {selected.features.map((feature) => (
-                        <li key={feature}>
-                          <Check size={17} />
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                    <Link
-                      className="button button-primary"
-                      to={`/register?type=${type}`}
-                    >
-                      Get started as{" "}
-                      {type === "client"
-                        ? "a buyer"
-                        : type === "other"
-                          ? "a partner"
-                          : `a ${organizationLabels[type].toLowerCase()}`}
-                      <ArrowUpRight size={16} />
-                    </Link>
-                  </div>
-                  <div className="hub-workspace-journey">
-                    <span>FROM FIRST STEP TO WHAT’S NEXT</span>
-                    {selected.journey.map((title, step) => (
-                      <div
-                        key={title}
-                        style={{ "--workspace-step": step } as CSSProperties}
-                      >
-                        <span>{String(step + 1).padStart(2, "0")}</span>
-                        <strong>{title}</strong>
-                        {step === selected.journey.length - 1 ? (
-                          <CircleCheck size={21} />
-                        ) : (
-                          <ArrowRight size={19} />
-                        )}
-                      </div>
-                    ))}
-                    <p>
-                      <LockKeyhole size={15} />
-                      Your records. Your team. The right access.
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="hub-workspace-scroll-footer">
-            <span className="hub-workspace-position" aria-hidden="true">
-              <strong>{String(index + 1).padStart(2, "0")}</strong> /{" "}
-              {String(organizationTypes.length).padStart(2, "0")}
-            </span>
-            <div className="hub-workspace-progress" aria-hidden="true">
-              <span
-                style={
-                  pinned
-                    ? undefined
-                    : {
-                        transform: `scaleX(${(index + 1) / organizationTypes.length})`,
-                      }
-                }
-              />
+        <div className="hub-workspace-presentation" ref={presentation}>
+          <div className="hub-section-heading" ref={intro}>
+            <div>
+              <span className="hub-eyebrow">YOUR ROLE. YOUR WORKSPACE.</span>
+              <h2 id="workspace-heading">
+                A shared platform.
+                <br />A space that feels like yours.
+              </h2>
             </div>
-            {pinned && (
-              <span className="hub-workspace-scroll-hint">
-                <ArrowDown size={13} />
-                {index === organizationTypes.length - 1
-                  ? "Keep exploring"
-                  : "Scroll to explore"}
+            <p>
+              Different businesses need different tools. Explore the workspace
+              that fits the way you work.
+            </p>
+          </div>
+          <div
+            className="hub-workspace-stage"
+            ref={stage}
+            data-direction={direction > 0 ? "forward" : "backward"}
+          >
+            <div
+              className="hub-workspace-tabs"
+              ref={tabs}
+              role="tablist"
+              onKeyDown={onTabKey}
+              aria-label="Organization workspaces"
+            >
+              {organizationTypes.map((type, i) => (
+                <button
+                  key={type}
+                  type="button"
+                  id={`workspace-tab-${type}`}
+                  role="tab"
+                  aria-controls={`workspace-panel-${type}`}
+                  tabIndex={index === i ? 0 : -1}
+                  aria-selected={index === i}
+                  onClick={() => select(i)}
+                >
+                  {organizationLabels[type]}
+                  <span className="hub-workspace-tab-line" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+            <div className="hub-workspace-panels">
+              {organizationTypes.map((type, i) => {
+                const selected = workspaces[type];
+                const Icon = organizationIcons[type];
+                const current = index === i;
+                return (
+                  <div
+                    key={type}
+                    className={`hub-workspace-panel${current ? " is-active" : ""}`}
+                    role="tabpanel"
+                    tabIndex={current ? 0 : -1}
+                    id={`workspace-panel-${type}`}
+                    aria-labelledby={`workspace-tab-${type}`}
+                    aria-hidden={!current}
+                    inert={!current}
+                  >
+                    <div className="hub-workspace-copy">
+                      <span className="hub-workspace-type">
+                        <Icon size={20} />
+                        {organizationLabels[type]}
+                      </span>
+                      <h3>{selected.heading}</h3>
+                      <p className="hub-workspace-description">
+                        {selected.copy}
+                      </p>
+                      <ul>
+                        {selected.features.map((feature) => (
+                          <li key={feature}>
+                            <Check size={17} />
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                      <Link
+                        className="button button-primary"
+                        to={`/register?type=${type}`}
+                      >
+                        Get started as{" "}
+                        {type === "client"
+                          ? "a buyer"
+                          : type === "other"
+                            ? "a partner"
+                            : `a ${organizationLabels[type].toLowerCase()}`}
+                        <ArrowUpRight size={16} />
+                      </Link>
+                    </div>
+                    <div className="hub-workspace-journey">
+                      <span>FROM FIRST STEP TO WHAT’S NEXT</span>
+                      {selected.journey.map((title, step) => (
+                        <div
+                          key={title}
+                          style={{ "--workspace-step": step } as CSSProperties}
+                        >
+                          <span>{String(step + 1).padStart(2, "0")}</span>
+                          <strong>{title}</strong>
+                          {step === selected.journey.length - 1 ? (
+                            <CircleCheck size={21} />
+                          ) : (
+                            <ArrowRight size={19} />
+                          )}
+                        </div>
+                      ))}
+                      <p>
+                        <LockKeyhole size={15} />
+                        Your records. Your team. The right access.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hub-workspace-scroll-footer">
+              <span className="hub-workspace-position" aria-hidden="true">
+                <strong>{String(index + 1).padStart(2, "0")}</strong> /{" "}
+                {String(organizationTypes.length).padStart(2, "0")}
               </span>
-            )}
-            <a href="#lifecycle" aria-label="Explore the full workflow">
-              <span className="hub-workspace-skip-desktop">
-                Explore the full workflow
-              </span>
-              <span className="hub-workspace-skip-mobile">Full workflow</span>
-              <ArrowDown size={14} />
-            </a>
+              <div className="hub-workspace-progress" aria-hidden="true">
+                <span
+                  style={
+                    pinned
+                      ? undefined
+                      : {
+                          transform: `scaleX(${(index + 1) / organizationTypes.length})`,
+                        }
+                  }
+                />
+              </div>
+              {pinned && (
+                <span className="hub-workspace-scroll-hint">
+                  <ArrowDown size={13} />
+                  {index === organizationTypes.length - 1
+                    ? "Keep exploring"
+                    : "Scroll to explore"}
+                </span>
+              )}
+              <a href="#lifecycle" aria-label="Explore the full workflow">
+                <span className="hub-workspace-skip-desktop">
+                  Explore the full workflow
+                </span>
+                <span className="hub-workspace-skip-mobile">Full workflow</span>
+                <ArrowDown size={14} />
+              </a>
+            </div>
           </div>
         </div>
       </div>

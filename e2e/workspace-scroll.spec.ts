@@ -23,11 +23,27 @@ async function tour(page: Page) {
   );
   return page.locator(".hub-workspace-track").evaluate((track) => {
     const stage = track.querySelector<HTMLElement>(".hub-workspace-stage")!;
-    const top = Number.parseFloat(getComputedStyle(stage).top);
+    const group = track.querySelector<HTMLElement>(
+      ".hub-workspace-presentation",
+    )!;
+    const heading = group.querySelector<HTMLElement>(".hub-section-heading")!;
+    const mobile = window.matchMedia("(max-width: 800px)").matches;
+    const pinned = mobile ? stage : group;
+    const top = Number.parseFloat(getComputedStyle(pinned).top);
+    const leading = mobile
+      ? heading.offsetHeight +
+        Number.parseFloat(getComputedStyle(heading).marginBottom)
+      : 0;
     return {
-      start: window.scrollY + track.getBoundingClientRect().top - top,
-      distance: track.clientHeight - stage.offsetHeight,
+      start: window.scrollY + track.getBoundingClientRect().top + leading - top,
+      distance: track.clientHeight - pinned.offsetHeight - leading,
       top,
+      cardTop:
+        top +
+        (mobile
+          ? 0
+          : stage.getBoundingClientRect().top -
+            group.getBoundingClientRect().top),
     };
   });
 }
@@ -86,7 +102,7 @@ async function swipe(page: Page, session: CDPSession, distance: number) {
 test.describe("Public workspace scroll tour", () => {
   test.use({ reducedMotion: "no-preference" });
 
-  test("pins the card, visits all nine workspaces in both directions and releases after the last", async ({
+  test("pins the heading and card together, visits all nine workspaces in both directions and releases after the last", async ({
     page,
   }) => {
     const geometry = await tour(page);
@@ -105,6 +121,14 @@ test.describe("Public workspace scroll tour", () => {
         await page
           .locator(".hub-workspace-stage")
           .evaluate((el) => el.getBoundingClientRect().top),
+      ).toBeCloseTo(geometry.cardTop, 0);
+      await expect(
+        page.locator("#workspaces .hub-section-heading"),
+      ).toBeInViewport({ ratio: 1 });
+      expect(
+        await page
+          .locator(".hub-workspace-presentation")
+          .evaluate((el) => el.getBoundingClientRect().top),
       ).toBeCloseTo(geometry.top, 0);
       expect(
         await page
@@ -115,7 +139,9 @@ test.describe("Public workspace scroll tour", () => {
     const spacing = await page
       .locator(".hub-workspace-stage")
       .evaluate((el) => {
-        const box = el.getBoundingClientRect();
+        const box = el
+          .closest(".hub-workspace-presentation")!
+          .getBoundingClientRect();
         const header = document
           .querySelector(".public-header")!
           .getBoundingClientRect();
@@ -139,11 +165,82 @@ test.describe("Public workspace scroll tour", () => {
       await page
         .locator(".hub-workspace-stage")
         .evaluate((el) => el.getBoundingClientRect().top),
+    ).toBeLessThan(geometry.cardTop - 170);
+    expect(
+      await page
+        .locator("#workspaces .hub-section-heading")
+        .evaluate((el) => el.getBoundingClientRect().top),
     ).toBeLessThan(geometry.top - 170);
     await page.locator("#lifecycle").scrollIntoViewIfNeeded();
     await expect(
       page.getByRole("tablist", { name: "Procurement lifecycle" }),
     ).toBeInViewport();
+  });
+
+  test("laptop layouts keep the full heading and card visible with compact section spacing", async ({
+    page,
+  }) => {
+    for (const [width, height] of [
+      [1280, 720],
+      [1366, 768],
+      [1024, 768],
+      [1440, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      const geometry = await tour(page);
+      await move(page, geometry.start + geometry.distance / 2);
+      await expect(
+        tabs(page).getByRole("tab", { name: "Staffing Company", exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        page.locator("#workspaces .hub-section-heading"),
+      ).toBeInViewport({ ratio: 1 });
+      await expect(page.locator(".hub-workspace-stage")).toBeInViewport({
+        ratio: 1,
+      });
+      // Inspect settled spacing after the section's entrance transition.
+      await page
+        .locator("#workspaces .hub-section-heading")
+        .evaluate(async (element) =>
+          Promise.all(
+            element
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => {})),
+          ),
+        );
+      const spacing = await page.locator("#workspaces").evaluate((section) => {
+        const style = getComputedStyle(section);
+        const heading = section
+          .querySelector(".hub-section-heading")!
+          .getBoundingClientRect();
+        const card = section
+          .querySelector(".hub-workspace-stage")!
+          .getBoundingClientRect();
+        const header = document
+          .querySelector(".public-header")!
+          .getBoundingClientRect();
+        return {
+          topPadding: Number.parseFloat(style.paddingTop),
+          bottomPadding: Number.parseFloat(style.paddingBottom),
+          gap: card.top - heading.bottom,
+          belowHeader: heading.top - header.bottom,
+          bottom: card.bottom,
+          overflows: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(spacing.topPadding).toBeLessThanOrEqual(48);
+      expect(spacing.bottomPadding).toBeLessThanOrEqual(48);
+      expect(spacing.gap).toBeGreaterThanOrEqual(16);
+      expect(spacing.gap).toBeLessThanOrEqual(25);
+      expect(spacing.belowHeader).toBeGreaterThanOrEqual(10);
+      expect(spacing.bottom).toBeLessThanOrEqual(height - 10);
+      expect(spacing.overflows).toBe(false);
+      await page.screenshot({
+        path: test
+          .info()
+          .outputPath(`workspace-heading-${width}x${height}.png`),
+      });
+    }
   });
 
   test("direct tabs, keyboard selection and skip navigation stay synchronized with scrolling", async ({
