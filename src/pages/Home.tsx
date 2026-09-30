@@ -36,6 +36,7 @@ import {
   type OrganizationType,
 } from "../../shared/domain";
 import { organizationIcons } from "../components/icons";
+import { WorkspaceShowcase } from "../components/WorkspaceShowcase";
 
 function tabKeys(event: KeyboardEvent<HTMLElement>) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -597,7 +598,7 @@ export default function Home() {
     if (!container || !window.IntersectionObserver) return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const targets = container.querySelectorAll<HTMLElement>(
-      ".hub-section-heading, .hub-feature-grid > article, .hub-platform-metric, .hub-workspace-panel, .hub-ai-section",
+      ".hub-section-heading, .hub-feature-grid > article, .hub-platform-metric, .hub-ai-section",
     );
     const observer = new IntersectionObserver(
       (entries) => {
@@ -624,12 +625,9 @@ export default function Home() {
       preference.removeEventListener("change", start);
     };
   }, []);
-  const [type, setType] = useState<OrganizationType>("client"),
-    [stage, setStage] = useState(0),
+  const [stage, setStage] = useState(0),
     [track, setTrack] = useState(0);
-  const selected = workspaces[type],
-    TypeIcon = organizationIcons[type],
-    step = lifecycle[stage];
+  const step = lifecycle[stage];
   const tracks = [
     {
       label: "Source & procure",
@@ -919,95 +917,7 @@ export default function Home() {
             </article>
           </div>
         </section>
-        <section className="hub-section hub-workspaces" id="workspaces">
-          <div className="hub-section-heading">
-            <div>
-              <span className="hub-eyebrow">YOUR ROLE. YOUR WORKSPACE.</span>
-              <h2>
-                A shared platform.
-                <br />A space that feels like yours.
-              </h2>
-            </div>
-            <p>
-              Different businesses need different tools. Choose your
-              organization type to explore how PartnerHub fits your work.
-            </p>
-          </div>
-          <div
-            className="hub-workspace-tabs"
-            role="tablist"
-            onKeyDown={tabKeys}
-            aria-label="Organization workspaces"
-          >
-            {organizationTypes.map((t) => (
-              <button
-                key={t}
-                id={`workspace-tab-${t}`}
-                role="tab"
-                aria-controls="workspace-description"
-                tabIndex={type === t ? 0 : -1}
-                aria-selected={type === t}
-                onClick={() => setType(t)}
-              >
-                {organizationLabels[t]}
-              </button>
-            ))}
-          </div>
-          <div
-            className="hub-workspace-panel"
-            role="tabpanel"
-            tabIndex={0}
-            id="workspace-description"
-            aria-labelledby={`workspace-tab-${type}`}
-          >
-            <div>
-              <span className="hub-workspace-type">
-                <TypeIcon size={20} />
-                {organizationLabels[type]}
-              </span>
-              <h3>{selected.heading}</h3>
-              <p>{selected.copy}</p>
-              <ul>
-                {selected.features.map((f) => (
-                  <li key={f}>
-                    <Check size={17} />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                className="button button-primary"
-                to={`/register?type=${type}`}
-              >
-                Get started as{" "}
-                {type === "client"
-                  ? "a buyer"
-                  : type === "other"
-                    ? "a partner"
-                    : `a ${organizationLabels[type].toLowerCase()}`}
-                <ArrowUpRight size={16} />
-              </Link>
-            </div>
-            <div className="hub-workspace-journey">
-              <span>FROM FIRST STEP TO WHAT’S NEXT</span>
-              {selected.journey.map((title, i) => (
-                <div key={title}>
-                  <span>{String(i + 1).padStart(2, "0")}</span>
-                  <strong>{title}</strong>
-                  {i === selected.journey.length - 1 ? (
-                    <CircleCheck size={21} />
-                  ) : (
-                    <ArrowRight size={19} />
-                  )}
-                </div>
-              ))}
-              <p>
-                <LockKeyhole size={15} /> Your records. Your team. The right
-                access.
-              </p>
-            </div>
-          </div>
-        </section>
+        <WorkspaceShowcase workspaces={workspaces} />
         <section className="hub-section hub-lifecycle" id="lifecycle">
           <div className="hub-section-heading">
             <div>
