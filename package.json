@@ -39,6 +39,7 @@
     "mobile:ios": "cap open ios",
     "mobile:android": "cap open android",
     "mobile:assets": "node scripts/mobile-assets.mjs",
+    "capacitor:copy:after": "node scripts/prepare-native-offline.mjs",
     "report:verification": "node scripts/verification-report.mjs",
     "docs:analytics": "node --import tsx scripts/analytics-dictionary.mjs"
   },

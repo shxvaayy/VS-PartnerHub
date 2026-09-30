@@ -1,0 +1,98 @@
+name: Verify native applications
+on:
+  workflow_dispatch:
+    inputs:
+      server_origin:
+        description: PartnerHub HTTPS origin to include in the native build
+        type: string
+        default: https://vs-partnerhub.vercel.app
+  push:
+    branches: [main, codex/native-verification]
+    paths:
+      - android/**
+      - ios/**
+      - public/**
+      - src/**
+      - package.json
+      - package-lock.json
+      - capacitor.config.ts
+      - scripts/verify-native.mjs
+      - scripts/prepare-native-offline.mjs
+      - .github/workflows/native.yml
+  pull_request:
+    paths:
+      - android/**
+      - ios/**
+      - public/**
+      - src/**
+      - package.json
+      - package-lock.json
+      - capacitor.config.ts
+      - scripts/verify-native.mjs
+      - scripts/prepare-native-offline.mjs
+      - .github/workflows/native.yml
+permissions:
+  contents: read
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  MOBILE_SERVER_URL: ${{ inputs.server_origin || 'https://vs-partnerhub.vercel.app' }}
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Build debug APK and unsigned release bundle; run Android lint
+        run: ./android/gradlew -p android --no-daemon --console=plain :app:assembleDebug :app:bundleRelease :app:lintDebug
+      - name: Inspect packaged application identity and workspace configuration
+        run: node scripts/verify-native.mjs android
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partnerhub-android-verification
+          path: |
+            artifacts/native-verification/android/
+            android/app/build/reports/lint-results-debug.*
+          retention-days: 7
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: xcodebuild -version
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync ios
+      - name: Build and launch an unsigned simulator app
+        run: node scripts/verify-native.mjs ios
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partnerhub-ios-verification
+          path: artifacts/native-verification/ios/
+          retention-days: 7
