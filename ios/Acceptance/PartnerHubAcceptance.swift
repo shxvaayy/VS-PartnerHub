@@ -26,7 +26,32 @@ final class PartnerHubAcceptance: XCTestCase {
 
     func navigate(_ label: String) {
         tap(app.buttons["Open navigation"].firstMatch)
-        tap(app.links[label].firstMatch)
+        let panel = app.otherElements.matching(NSPredicate(format: "label BEGINSWITH %@", "Main navigation")).firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10))
+        let link = panel.links[label].firstMatch
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        let shortcuts = panel.buttons["Search"].firstMatch
+        let footer = panel.links.matching(NSPredicate(format: "label BEGINSWITH %@", "Here to help you grow")).firstMatch
+        XCTAssertTrue(shortcuts.exists && footer.exists)
+        // WKWebView may report a clipped link as hittable beneath the fixed
+        // footer. Scroll the actual menu until the link is inside its viewport.
+        for _ in 0..<6 {
+            let top = shortcuts.frame.maxY + 12
+            let bottom = footer.frame.minY - 12
+            if link.frame.minY >= top && link.frame.maxY <= bottom { break }
+            let upper = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.40))
+            let lower = panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.69))
+            if link.frame.maxY > bottom {
+                lower.press(forDuration: 0.1, thenDragTo: upper)
+            } else {
+                upper.press(forDuration: 0.1, thenDragTo: lower)
+            }
+        }
+        XCTAssertTrue(link.frame.minY >= shortcuts.frame.maxY + 12 && link.frame.maxY <= footer.frame.minY - 12, "The menu link must be visible above the fixed footer.")
+        tap(link)
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: panel.buttons["Close navigation"].firstMatch)
+        wait(for: [closed], timeout: 20)
+        XCTAssertTrue(app.staticTexts[label].firstMatch.waitForExistence(timeout: 20), "The requested workspace must open before continuing.")
     }
 
     func control(_ action: String) {

@@ -792,6 +792,20 @@ test("mobile navigation supports the complete menu, keyboard dismissal and scope
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+  for (const route of ["/app/rfqs", "/app/rfqs?status=open"]) {
+    await page.goto(route);
+    await page
+      .getByRole("button", { name: "Open navigation", exact: true })
+      .click();
+    await modal(page).getByRole("link", { name: "RFQs", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/rfqs$/);
+    await expect(
+      page.getByRole("dialog", { name: "Main navigation" }),
+    ).toHaveCount(0);
+    expect(
+      await page.locator(".app-main").evaluate((element) => element.inert),
+    ).toBe(false);
+  }
 });
 
 test("signing out clears the workspace in other open tabs", async ({

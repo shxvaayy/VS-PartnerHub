@@ -167,6 +167,7 @@ export default function Layout() {
       key={to}
       end={to === "/app"}
       to={to}
+      onClick={() => setMobile(false)}
       className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
     >
       <Icon size={18} />
