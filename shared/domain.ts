@@ -599,6 +599,41 @@ export const defaultPermissions: Record<string, Permissions> = {
     ...perm(["tickets", "notifications"]),
   },
 };
+for (const [role, permissions] of Object.entries(defaultPermissions)) {
+  permissions.ai = ["view", "create"];
+  permissions.contacts = ["super_admin", "org_admin", "verification"].includes(
+    role,
+  )
+    ? [...full]
+    : ["view"];
+  if (["super_admin", "hr", "procurement", "org_admin"].includes(role))
+    permissions.resources = [...full];
+  if (
+    ["management", "org_member", "org_recruiter", "org_procurement"].includes(
+      role,
+    )
+  )
+    permissions.resources = ["view"];
+  if (["super_admin", "org_admin"].includes(role))
+    permissions.integrations = [...full];
+  if (
+    [
+      "super_admin",
+      "org_admin",
+      "procurement",
+      "finance",
+      "org_procurement",
+      "org_finance",
+    ].includes(role)
+  )
+    permissions.approvals = [
+      "view",
+      ...(["super_admin", "org_admin"].includes(role)
+        ? ["manage" as Action]
+        : []),
+    ];
+  if (role === "super_admin") permissions["master-data"] = [...full];
+}
 export const contactRoles = [
   "Founder / CEO / Director",
   "Proprietor / Partner",
@@ -641,6 +676,7 @@ export const categories = [
 ];
 export interface LineItem {
   id?: string;
+  catalog_item_id?: string | null;
   name: string;
   specification?: string;
   quantity: number;
@@ -659,6 +695,8 @@ export interface Organization {
   city: string;
   country: string;
   website: string;
+  logo_url?: string | null;
+  marketplace_visible?: boolean;
   status: string;
   contact_name: string;
   contact_email: string;

@@ -2,6 +2,7 @@ import { chromium } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 const output = path.resolve("artifacts/local-verification");
+const base = process.env.PREVIEW_URL || "http://127.0.0.1:5173";
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({
@@ -11,12 +12,12 @@ const context = await browser.newContext({
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+await page.goto(`${base}/`, { waitUntil: "networkidle" });
 await page.screenshot({
   path: path.join(output, "01-landing-desktop.png"),
   fullPage: true,
 });
-await page.goto("http://127.0.0.1:5173/login?demo=true", {
+await page.goto(`${base}/login?demo=true`, {
   waitUntil: "networkidle",
 });
 await page
@@ -59,10 +60,17 @@ const routes = [
   "settings",
   "notifications",
   "tickets",
+  "ai",
+  "approvals",
+  "integrations",
+  "master-data",
+  "resources",
+  "inquiries",
+  "insights",
 ];
 const checks = [];
 for (const route of routes) {
-  await page.goto(`http://127.0.0.1:5173/app/${route}`, {
+  await page.goto(`${base}/app/${route}`, {
     waitUntil: "networkidle",
   });
   const text = await page.locator("main").innerText();
@@ -75,20 +83,20 @@ for (const route of routes) {
     heading: await page.locator("h1").first().textContent(),
   });
 }
-await page.goto("http://127.0.0.1:5173/app/discovery", {
+await page.goto(`${base}/app/discovery`, {
   waitUntil: "networkidle",
 });
 await page.screenshot({
   path: path.join(output, "03-discovery-desktop.png"),
   fullPage: true,
 });
-await page.goto("http://127.0.0.1:5173/app/rfqs", { waitUntil: "networkidle" });
+await page.goto(`${base}/app/rfqs`, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "New rfq", exact: false }).click();
 await page.getByRole("dialog").waitFor();
 await page.screenshot({ path: path.join(output, "04-rfq-form-desktop.png") });
 await page.getByRole("button", { name: "Close dialog" }).click();
 await page.setViewportSize({ width: 390, height: 844 });
-await page.goto("http://127.0.0.1:5173/app", { waitUntil: "networkidle" });
+await page.goto(`${base}/app`, { waitUntil: "networkidle" });
 await page.screenshot({
   path: path.join(output, "05-admin-mobile.png"),
   fullPage: true,
@@ -99,7 +107,7 @@ const overflow = await page.evaluate(() => ({
 }));
 await page.getByRole("button", { name: "Open navigation" }).click();
 await page.screenshot({ path: path.join(output, "06-navigation-mobile.png") });
-await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+await page.goto(`${base}/`, { waitUntil: "networkidle" });
 await page.screenshot({
   path: path.join(output, "07-landing-mobile.png"),
   fullPage: true,
@@ -117,13 +125,13 @@ for (const [index, role, route] of [
   ["12", "technology", "/app/demos"],
   ["13", "finance", "/app/invoices"],
 ]) {
-  await page.goto("http://127.0.0.1:5173/login?demo=true", {
+  await page.goto(`${base}/login?demo=true`, {
     waitUntil: "networkidle",
   });
   await page.getByLabel("Demo workspace role").selectOption(role);
   await page.getByRole("button", { name: /^Explore .* workspace$/ }).click();
   await page.waitForURL("**/app");
-  await page.goto(`http://127.0.0.1:5173${route}`, {
+  await page.goto(`${base}${route}`, {
     waitUntil: "networkidle",
   });
   await page.locator("main h1").waitFor();

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, now, parseJson } from "./db.js";
 import { INTERNAL_ORG_ID } from "./config.js";
@@ -13,6 +14,7 @@ import {
 import { audit, notifyOrganizations } from "./events.js";
 import { organizationSchema, pagination, uuid } from "./validation.js";
 import type { Organization, SessionUser } from "../shared/domain.js";
+import { documentPolicies } from "./master-data.js";
 export const organizationsRouter = Router();
 organizationsRouter.use(authenticated);
 const publicDetailKeys = [
@@ -38,7 +40,7 @@ const publicDetailKeys = [
 ];
 // Search only disclosed business fields. Searching the full JSON would let
 // discovery queries infer private KYC values even when responses redact them.
-function searchPublicDetails(
+export function searchPublicDetails(
   builder: ReturnType<typeof db>,
   term: string,
   keys = publicDetailKeys,
@@ -69,6 +71,7 @@ export const publicOrganization = (org: Organization) => ({
   city: org.city,
   country: org.country,
   website: org.website,
+  logo_url: org.logo_url,
   status: org.status,
   created_at: org.created_at,
   updated_at: org.updated_at,
@@ -119,6 +122,19 @@ organizationsRouter.get("/", async (req, res) => {
     });
   if (certification)
     q.where((b) => searchPublicDetails(b, certification, ["certifications"]));
+  for (const [parameter, key] of Object.entries({
+    technology: "technologies",
+    product: "products",
+    service: "services",
+    naics: "naics",
+    sic: "sic",
+    business_type: "company_type",
+  })) {
+    if (req.query[parameter]) {
+      const value = z.string().trim().max(150).parse(req.query[parameter]);
+      q.where((b) => searchPublicDetails(b, value, [key]));
+    }
+  }
   const count = await q.clone().count({ count: "*" }).first();
   const rows = await q
     .orderBy("created_at", "desc")
@@ -206,6 +222,32 @@ organizationsRouter.patch("/:id", async (req, res) => {
         }),
         status,
         updated_at: now(),
+      });
+    const matchingContact = await k("organization_contacts")
+      .where({ organization_id: id, email: input.contact_email })
+      .first();
+    await k("organization_contacts")
+      .where({ organization_id: id })
+      .update({ is_primary: false });
+    const contact = {
+      organization_id: id,
+      name: input.contact_name,
+      email: input.contact_email,
+      phone: input.contact_phone,
+      role: input.details.contact_role || "Authorized Representative",
+      active: true,
+      is_primary: true,
+      updated_at: now(),
+    };
+    if (matchingContact)
+      await k("organization_contacts")
+        .where({ id: matchingContact.id })
+        .update(contact);
+    else
+      await k("organization_contacts").insert({
+        ...contact,
+        id: randomUUID(),
+        created_at: now(),
       });
     await audit(
       k,
@@ -304,9 +346,7 @@ organizationsRouter.post(
           422,
           "An organization administrator must verify their email first.",
         );
-        const settings = parseJson(
-          (await k("settings").where({ key: "platform" }).first())?.value,
-        );
+        const policies = await documentPolicies(org.type, k);
         const documents = await k("documents").where({
           organization_id: id,
           record_id: null,
@@ -314,17 +354,18 @@ organizationsRouter.post(
         const latest = documents.filter(
           (d) => !documents.some((next) => next.previous_id === d.id),
         );
-        const missing = (
-          settings.requiredDocuments || ["PAN", "Incorporation"]
-        ).filter(
-          (category: string) =>
-            !latest.some(
-              (d) =>
-                d.category === category &&
-                d.status === "approved" &&
-                (!d.expires_at || d.expires_at >= now().slice(0, 10)),
-            ),
-        );
+        const missing = policies
+          .filter((p) => p.required)
+          .map((p) => p.category)
+          .filter(
+            (category: string) =>
+              !latest.some(
+                (d) =>
+                  d.category === category &&
+                  d.status === "approved" &&
+                  (!d.expires_at || d.expires_at >= now().slice(0, 10)),
+              ),
+          );
         assert(
           !missing.length,
           422,

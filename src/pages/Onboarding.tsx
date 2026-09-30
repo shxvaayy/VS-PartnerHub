@@ -1,4 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { PasswordField, useCountdown } from "../components/AuthControls";
+import { emailHint } from "../../shared/auth";
 import {
   Link,
   Navigate,
@@ -17,8 +20,11 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { AuthFrame } from "./Public";
+import EmailDeliveryStatus, {
+  useEmailDelivery,
+} from "../components/EmailDeliveryStatus";
 import { useAuth } from "../lib/auth";
-import { api } from "../lib/api";
+import { api, useApi } from "../lib/api";
 import {
   Button,
   Field,
@@ -26,6 +32,7 @@ import {
   Input,
   Loading,
   Logo,
+  Modal,
   useToast,
 } from "../components/ui";
 import { organizationIcons } from "../components/icons";
@@ -69,6 +76,13 @@ export default function Onboarding() {
     hiring_types: [],
     accept_terms: false,
   });
+  const configuration = useApi<any>(`/public/config?type=${type}`);
+  const requiredPolicies: { category: string; expiry_required: boolean }[] =
+    configuration.data?.documents?.filter((p: any) => p.required) || [
+      { category: "PAN", expiry_required: false },
+      { category: "Incorporation", expiry_required: false },
+    ];
+  const [fileExpiries, setFileExpiries] = useState<Record<string, string>>({});
   const [files, setFiles] = useState<Record<string, File | null>>({
     PAN: null,
     Incorporation: null,
@@ -84,7 +98,12 @@ export default function Onboarding() {
     placeholder = "",
     inputType = "text",
   ) => (
-    <Field key={name} label={title} required={required}>
+    <Field
+      key={name}
+      label={title}
+      required={required}
+      hint={inputType === "email" ? emailHint : undefined}
+    >
       <Input
         name={name}
         type={inputType}
@@ -98,6 +117,10 @@ export default function Onboarding() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    if (step === 1 && data.password !== data.confirm_password) {
+      setError(new Error("Both passwords must match."));
+      return;
+    }
     if (step < 4) {
       setStep(step + 1);
       window.scrollTo(0, 0);
@@ -107,6 +130,8 @@ export default function Onboarding() {
     try {
       const detailKeys = [
         "company_type",
+        "company_email",
+        "linkedin",
         "contact_role",
         "pan",
         "gst",
@@ -170,6 +195,8 @@ export default function Onboarding() {
           const form = new FormData();
           form.set("category", category);
           form.set("file", file);
+          if (fileExpiries[category])
+            form.set("expires_at", fileExpiries[category]);
           try {
             await api("/documents", { method: "POST", body: form });
           } catch {
@@ -177,7 +204,11 @@ export default function Onboarding() {
           }
         }
       navigate("/verify", {
-        state: { code: result.verificationCode, uploadErrors },
+        state: {
+          code: result.verificationCode,
+          resendAt: result.resendAt,
+          uploadErrors,
+        },
       });
     } catch (e) {
       setError(e);
@@ -284,6 +315,17 @@ export default function Onboarding() {
               </p>
             </div>
             <FormError error={error} />
+            {configuration.error && <FormError error={configuration.error} />}
+            {configuration.data &&
+              !configuration.data.emailVerificationAvailable && (
+                <div className="data-policy-note">
+                  New partner registration is temporarily unavailable.{" "}
+                  <Link className="text-link" to="/contact">
+                    Contact the VS team
+                  </Link>{" "}
+                  for help getting started.
+                </div>
+              )}
             {step === 0 && (
               <div className="onboarding-types">
                 {organizationTypes.map((value) => {
@@ -338,23 +380,23 @@ export default function Onboarding() {
                   "email",
                 )}
                 {textField("contact_phone", "Phone number", true, "+91", "tel")}
-                <Field
+                <PasswordField
                   label="Create a password"
+                  name="password"
+                  newPassword
+                  value={data.password}
+                  onChange={(e) => set("password", e.target.value)}
                   required
-                  hint="12+ characters with uppercase, lowercase and a number."
-                >
-                  <Input
-                    name="password"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={12}
-                    maxLength={128}
-                    pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{12,}"
-                    value={data.password}
-                    onChange={(e) => set("password", e.target.value)}
-                    required
-                  />
-                </Field>
+                />
+                <PasswordField
+                  label="Confirm password"
+                  name="confirm_password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  value={data.confirm_password || ""}
+                  onChange={(e) => set("confirm_password", e.target.value)}
+                  required
+                />
               </div>
             )}
             {step === 2 && (
@@ -366,6 +408,20 @@ export default function Onboarding() {
                   "As shown on your registration certificate",
                 )}
                 {textField("trade_name", "Trade / brand name")}
+                {textField(
+                  "company_email",
+                  "Company email (recommended)",
+                  false,
+                  "contact@company.com",
+                  "email",
+                )}
+                {textField(
+                  "linkedin",
+                  "Company LinkedIn",
+                  false,
+                  "https://www.linkedin.com/company/…",
+                  "url",
+                )}
                 <Field label="Company type" required>
                   <select
                     name="company_type"
@@ -393,7 +449,11 @@ export default function Onboarding() {
                     value={data.industry}
                     onChange={(e) => set("industry", e.target.value)}
                   >
-                    {categories.map((c) => (
+                    {(
+                      configuration.data?.lists.industry?.map(
+                        (c: any) => c.label,
+                      ) || categories
+                    ).map((c: string) => (
                       <option key={c}>{c}</option>
                     ))}
                   </select>
@@ -590,49 +650,66 @@ export default function Onboarding() {
                     </p>
                   </div>
                 </div>
-                {["PAN", "Incorporation"].map((category) => (
-                  <Field
-                    key={category}
-                    label={
-                      category === "PAN"
-                        ? "Company PAN"
-                        : "Certificate of incorporation / registration"
-                    }
-                    required
-                  >
-                    <div
-                      className={`upload-zone ${files[category] ? "has-file" : ""}`}
+                {requiredPolicies.map(({ category, expiry_required }) => (
+                  <div key={category} className="form-stack">
+                    <Field
+                      key={category}
+                      label={
+                        category === "PAN"
+                          ? "Company PAN"
+                          : "Certificate of incorporation / registration"
+                      }
+                      required
                     >
-                      <UploadCloud size={28} />
-                      <strong>
-                        {files[category]?.name || "Choose a document"}
-                      </strong>
-                      <span>
-                        {files[category]
-                          ? `${(files[category]!.size / 1024).toFixed(0)} KB · Click to change`
-                          : "PDF, PNG or JPEG up to 10 MB"}
-                      </span>
-                      <input
-                        name={`document_${category}`}
-                        type="file"
-                        accept="application/pdf,image/png,image/jpeg"
-                        required={!files[category]}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f && f.size > 10 * 1024 * 1024) {
-                            setError(
-                              new Error(
-                                "Please choose a document smaller than 10 MB.",
-                              ),
-                            );
-                            return;
+                      <div
+                        className={`upload-zone ${files[category] ? "has-file" : ""}`}
+                      >
+                        <UploadCloud size={28} />
+                        <strong>
+                          {files[category]?.name || "Choose a document"}
+                        </strong>
+                        <span>
+                          {files[category]
+                            ? `${(files[category]!.size / 1024).toFixed(0)} KB · Click to change`
+                            : "PDF, PNG or JPEG up to 10 MB"}
+                        </span>
+                        <input
+                          name={`document_${category}`}
+                          type="file"
+                          accept="application/pdf,image/png,image/jpeg"
+                          required={!files[category]}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f && f.size > 10 * 1024 * 1024) {
+                              setError(
+                                new Error(
+                                  "Please choose a document smaller than 10 MB.",
+                                ),
+                              );
+                              return;
+                            }
+                            setFiles((v) => ({ ...v, [category]: f || null }));
+                          }}
+                          aria-label={`Upload ${category}`}
+                        />
+                      </div>
+                    </Field>
+                    {expiry_required && (
+                      <Field label={`${category} expiry date`} required>
+                        <Input
+                          type="date"
+                          required
+                          value={fileExpiries[category] || ""}
+                          onChange={(e) =>
+                            setFileExpiries((v) => ({
+                              ...v,
+                              [category]: e.target.value,
+                            }))
                           }
-                          setFiles((v) => ({ ...v, [category]: f || null }));
-                        }}
-                        aria-label={`Upload ${category}`}
-                      />
-                    </div>
-                  </Field>
+                        />
+                      </Field>
+                    )}
+                  </div>
                 ))}
                 <label className="check-label terms-check">
                   <input
@@ -674,7 +751,15 @@ export default function Onboarding() {
                   Back to home
                 </Link>
               )}
-              <Button type="submit" busy={busy}>
+              <Button
+                type="submit"
+                busy={busy}
+                disabled={
+                  step === 4 &&
+                  (!configuration.data ||
+                    !configuration.data.emailVerificationAvailable)
+                }
+              >
                 {step === 4 ? "Create your partner account" : "Continue"}
                 <ArrowRight size={17} />
               </Button>
@@ -686,19 +771,30 @@ export default function Onboarding() {
   );
 }
 export function VerifyEmail() {
-  const { user, loading, refresh, demo } = useAuth(),
+  const { user, loading, refresh, accept, signOut, demo } = useAuth(),
     location = useLocation(),
     navigate = useNavigate(),
-    toast = useToast();
+    toast = useToast(),
+    client = useQueryClient();
   const [code, setCode] = useState(""),
     [demoCode, setDemoCode] = useState((location.state as any)?.code || ""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState<unknown>();
+    [error, setError] = useState<unknown>(),
+    [correcting, setCorrecting] = useState(false),
+    [correctionError, setCorrectionError] = useState<unknown>(),
+    [resendAt, setResendAt] = useState<string | undefined>(
+      (location.state as any)?.resendAt,
+    );
+  const delivery = useEmailDelivery(
+    undefined,
+    Boolean(user && !user.email_verified),
+  );
+  const resendWait = useCountdown(resendAt || delivery.data?.resendAt);
   if (loading) return <Loading />;
   if (!user) return <Navigate to="/login" replace />;
   if (user.email_verified) return <Navigate to="/app" replace />;
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  async function submit(event: FormEvent) {
+    event.preventDefault();
     setBusy(true);
     setError(null);
     try {
@@ -707,25 +803,47 @@ export function VerifyEmail() {
         body: JSON.stringify({ code }),
       });
       await refresh();
-      navigate("/app");
+      navigate("/app", { replace: true });
       toast("Email verified. Your company application is ready for review.");
-    } catch (e) {
-      setError(e);
+    } catch (error) {
+      setError(error);
     } finally {
       setBusy(false);
     }
-  };
+  }
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api("/auth/resend-code", { method: "POST" });
+      setDemoCode(result.verificationCode || "");
+      setResendAt(result.resendAt);
+      setCode("");
+      await client.invalidateQueries({
+        queryKey: ["/auth/verification-delivery"],
+      });
+      toast(
+        "A new verification code has been requested. Use the latest email.",
+      );
+    } catch (error) {
+      setError(error);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <AuthFrame subtitle="One small step. A world of possibilities.">
       <div className="auth-form-wrap">
         <div className="auth-feature-icon">
           <Mail size={30} />
         </div>
+        <span className="eyebrow">VERIFY YOUR EMAIL</span>
         <h1>Check your inbox.</h1>
         <p className="auth-description">
-          We sent a six-digit verification code to <strong>{user.email}</strong>
-          . Enter it below to continue.
+          A six-digit verification code has been requested for{" "}
+          <strong>{user.email}</strong>. Enter it below to continue.
         </p>
+        <EmailDeliveryStatus />
         {(location.state as any)?.uploadErrors?.length > 0 && (
           <div className="form-error">
             Some documents could not be uploaded. Add them in your Documents
@@ -734,7 +852,11 @@ export function VerifyEmail() {
         )}
         <form className="form-stack" onSubmit={submit}>
           <FormError error={error} />
-          <Field label="Verification code">
+          <Field
+            label="Verification code"
+            required
+            hint="Your code expires in 10 minutes. Never share it with anyone."
+          >
             <Input
               className="input otp-input"
               name="code"
@@ -743,47 +865,142 @@ export function VerifyEmail() {
               pattern="[0-9]{6}"
               maxLength={6}
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              onChange={(event) =>
+                setCode(event.target.value.replace(/\D/g, ""))
+              }
               placeholder="000000"
               required
             />
           </Field>
           <Button type="submit" busy={busy}>
-            Verify email
-            <ArrowRight size={16} />
+            Verify email <ArrowRight size={16} />
           </Button>
         </form>
         {demo && demoCode && (
           <div className="dev-code">
             <strong>Local development code</strong>
             <code>{demoCode}</code>
-            <span>Visible only in local demo mode.</span>
+            <span>Visible only in isolated demo mode.</span>
           </div>
         )}
         <div className="auth-bottom-link">
           Didn’t receive a code?{" "}
-          <button
-            disabled={busy}
-            onClick={async () => {
-              setError(null);
-              try {
-                const result = await api("/auth/resend-code", {
-                  method: "POST",
-                });
-                setDemoCode(result.verificationCode || "");
-                toast("A new code has been sent.");
-              } catch (e) {
-                setError(e);
-              }
-            }}
-          >
-            Resend code
+          <button disabled={busy || resendWait > 0} onClick={resend}>
+            {resendWait > 0 ? `Resend in ${resendWait}s` : "Resend code"}
           </button>
         </div>
+        <div className="verification-actions">
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setCorrecting(true);
+              setCorrectionError(null);
+            }}
+          >
+            Correct email address
+          </button>
+          <Link to="/contact">Get help</Link>
+        </div>
+        <div className="verification-next">
+          <ShieldCheck size={22} />
+          <div>
+            <strong>Next, a review by the VS team</strong>
+            <p>
+              After email verification, our team reviews your company profile
+              and documents before activating transactions.
+            </p>
+          </div>
+        </div>
         <Link to="/app/documents" className="text-link">
-          Continue with company documents
-          <ArrowRight size={14} />
+          Continue with company documents <ArrowRight size={14} />
         </Link>
+        <button
+          className="text-button auth-signout"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await signOut();
+              navigate("/login");
+            } catch (error) {
+              setError(error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Sign out
+        </button>
+        {correcting && (
+          <Modal
+            title="Correct your email"
+            description="We’ll send a new verification code to the corrected address."
+            onClose={() => !busy && setCorrecting(false)}
+          >
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setBusy(true);
+                setCorrectionError(null);
+                try {
+                  const body = Object.fromEntries(
+                    new FormData(event.currentTarget),
+                  );
+                  const result = await api("/auth/correct-email", {
+                    method: "POST",
+                    body: JSON.stringify(body),
+                  });
+                  accept(result);
+                  setDemoCode(result.verificationCode || "");
+                  setResendAt(result.resendAt);
+                  setCode("");
+                  setCorrecting(false);
+                  setError(null);
+                  await client.invalidateQueries({
+                    queryKey: ["/auth/verification-delivery"],
+                  });
+                  toast("Email updated. Enter the code from the latest email.");
+                } catch (error) {
+                  setCorrectionError(error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <div className="modal-body form-stack">
+                <FormError error={correctionError} />
+                <Field label="Correct email address" required hint={emailHint}>
+                  <Input
+                    name="email"
+                    type="email"
+                    defaultValue={user.email}
+                    required
+                    autoComplete="email"
+                  />
+                </Field>
+                <PasswordField
+                  label="Your password"
+                  name="current_password"
+                  required
+                />
+              </div>
+              <div className="modal-footer">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => setCorrecting(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" busy={busy}>
+                  Update and send code
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        )}
       </div>
     </AuthFrame>
   );

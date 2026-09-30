@@ -2,6 +2,8 @@ import { db, now, parseJson, type Database } from "./db.js";
 import { assert } from "./errors.js";
 import { assertActive } from "./security.js";
 import { audit, notifyOrganizations } from "./events.js";
+import { approvalGate, startApproval } from "./approvals.js";
+import { signaturesAllowActivation } from "./signatures.js";
 import {
   accessibleRecord,
   allowedTransitions,
@@ -83,6 +85,9 @@ export async function transitionRecord(
         )
       : null;
     const today = now().slice(0, 10);
+    if (record.kind === "contracts" && target === "active")
+      await signaturesAllowActivation(record, k);
+    const effects: (() => Promise<void>)[] = [];
     if (record.kind === "rfqs" && target === "published") {
       assert(
         record.payload.deadline >= today,
@@ -146,35 +151,37 @@ export async function transitionRecord(
           409,
           "This RFQ already has an approved quotation.",
         );
-        await updateStatus(
-          k,
-          user,
-          parent,
-          "awarded",
-          `Awarded to ${record.number}. ${note}`,
-        );
-        const alternatives = await k("records")
-          .where({ kind: "quotations", parent_id: record.parent_id })
-          .whereNot("id", id)
-          .whereNotIn("status", ["draft", "rejected"]);
-        for (const alternative of alternatives) {
-          const other = serializeRecord(alternative);
+        effects.push(async () => {
           await updateStatus(
             k,
             user,
-            other,
-            "rejected",
-            "Another quotation was approved for this RFQ.",
+            parent,
+            "awarded",
+            `Awarded to ${record.number}. ${note}`,
           );
-          await notifyOrganizations(
-            k,
-            [other.partner_org_id],
-            "Quotation decision",
-            `${other.number}: another quotation was selected.`,
-            `/app/quotations/${other.id}`,
-            "quotation",
-          );
-        }
+          const alternatives = await k("records")
+            .where({ kind: "quotations", parent_id: record.parent_id })
+            .whereNot("id", id)
+            .whereNotIn("status", ["draft", "rejected"]);
+          for (const alternative of alternatives) {
+            const other = serializeRecord(alternative);
+            await updateStatus(
+              k,
+              user,
+              other,
+              "rejected",
+              "Another quotation was approved for this RFQ.",
+            );
+            await notifyOrganizations(
+              k,
+              [other.partner_org_id],
+              "Quotation decision",
+              `${other.number}: another quotation was selected.`,
+              `/app/quotations/${other.id}`,
+              "quotation",
+            );
+          }
+        });
       }
     }
     if (record.kind === "orders" && target === "approved") {
@@ -265,12 +272,14 @@ export async function transitionRecord(
           record.amount_minor + Number(paid?.total || 0) ===
           parent.amount_minor
         )
-          await updateStatus(
-            k,
-            user,
-            parent,
-            "paid",
-            `Balance cleared by ${record.number}.`,
+          effects.push(() =>
+            updateStatus(
+              k,
+              user,
+              parent,
+              "paid",
+              `Balance cleared by ${record.number}.`,
+            ),
           );
       }
     }
@@ -336,8 +345,16 @@ export async function transitionRecord(
         422,
         "Add resolution notes before resolving this ticket.",
       );
+    if (!(await approvalGate(k, user, record, target, note)))
+      return recordDetail(id, user, k);
+    for (const effect of effects) await effect();
     await snapshot(k, record, user, note || `Status changed to ${target}`);
     await updateStatus(k, user, record, target, note);
+    await startApproval(k, {
+      ...record,
+      status: target,
+      version: record.version + 1,
+    });
     const invited =
       ["rfqs", "requirements"].includes(record.kind) &&
       ["published", "open"].includes(target)
@@ -381,6 +398,9 @@ export async function amendContract(
 ) {
   assertActive(user);
   return db.transaction(async (k) => {
+    let lock = k("records").where({ id });
+    if (db.client.config.client === "pg") lock = lock.forUpdate();
+    await lock.first();
     const record = await accessibleRecord(id, user, k);
     assert(
       record.kind === "contracts" &&
@@ -417,6 +437,10 @@ export async function amendContract(
         version: version + 1,
         updated_at: now(),
       });
+    await startApproval(
+      k,
+      serializeRecord(await k("records").where({ id }).first()),
+    );
     await audit(
       k,
       user,

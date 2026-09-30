@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { emailSchema, passwordSchema } from "../shared/auth.js";
+import { webAddressSchema } from "../shared/urls.js";
 import {
   organizationTypes,
   contactRoles,
@@ -16,20 +18,8 @@ export const date = z
     "Enter a valid date.",
   );
 export const optionalDate = z.union([date, z.literal("")]).optional();
-export const password = z
-  .string()
-  .min(12, "Use at least 12 characters.")
-  .max(128)
-  .refine(
-    (v) => /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v),
-    "Include uppercase, lowercase and a number.",
-  );
-export const email = z
-  .string()
-  .trim()
-  .email()
-  .max(254)
-  .transform((v) => v.toLowerCase());
+export const password = passwordSchema;
+export const email = emailSchema;
 export const companyDetailsSchema = z
   .object({
     company_type: text(100).optional(),
@@ -55,8 +45,12 @@ export const companyDetailsSchema = z
     udyam: text(80).optional(),
     address: text().optional(),
     postal_code: text(20).optional(),
-    linkedin: text(500).optional(),
-    company_email: text(254).optional(),
+    linkedin: webAddressSchema.optional(),
+    company_email: z
+      .string()
+      .trim()
+      .pipe(z.union([email, z.literal("")]))
+      .optional(),
     description: text(5000).optional(),
     capabilities: text(5000).optional(),
     products: text().optional(),
@@ -75,7 +69,7 @@ export const companyDetailsSchema = z
     warehouse: text().optional(),
     technologies: text().optional(),
     integrations: text().optional(),
-    documentation_url: text(500).optional(),
+    documentation_url: webAddressSchema.optional(),
     pricing_model: text(100).optional(),
     procurement_categories: text().optional(),
     annual_budget: text(100).optional(),
@@ -99,14 +93,7 @@ export const organizationSchema = z.object({
   industry: text(100).min(2),
   city: text(150).min(2),
   country: text(100).min(2).default("India"),
-  website: z
-    .union([
-      z
-        .url()
-        .refine((v) => /^https?:\/\//i.test(v), "Use an HTTP or HTTPS URL."),
-      z.literal(""),
-    ])
-    .default(""),
+  website: webAddressSchema.default(""),
   contact_name: text(150).min(2),
   contact_email: email,
   contact_phone: z
@@ -160,6 +147,7 @@ export const registrationSchema = z
       });
   });
 export const lineItemSchema = z.object({
+  catalog_item_id: uuid.nullable().optional(),
   name: text(200).min(1),
   specification: text(3000).default(""),
   quantity: z.coerce
@@ -223,7 +211,7 @@ export const recordSchema = z.object({
 });
 export type RecordInput = z.infer<typeof recordSchema>;
 export const documentSchema = z.object({
-  category: z.enum(documentCategories as [string, ...string[]]),
+  category: text(100).min(1),
   organization_id: uuid.optional(),
   record_id: uuid.optional(),
   expires_at: optionalDate,

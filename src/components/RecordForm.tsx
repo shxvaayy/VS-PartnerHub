@@ -55,11 +55,13 @@ export default function RecordForm({
   record,
   onClose,
   parentId,
+  draft,
 }: {
   kind: Module;
   record?: WorkRecord;
   onClose: () => void;
   parentId?: string;
+  draft?: { title: string; payload: Record<string, any>; items?: LineItem[] };
 }) {
   const { user } = useAuth(),
     toast = useToast(),
@@ -67,7 +69,8 @@ export default function RecordForm({
     client = useQueryClient();
   const lookups = useApi<any>(`/lookups?kind=${kind}`),
     settings = useApi<any>("/admin/settings");
-  const [title, setTitle] = useState(record?.title || ""),
+  const masterData = useApi<any>("/master-data");
+  const [title, setTitle] = useState(record?.title || draft?.title || ""),
     [parent, setParent] = useState(record?.parent_id || parentId || ""),
     [partner, setPartner] = useState(record?.partner_org_id || ""),
     [buyer, setBuyer] = useState(record?.buyer_org_id || ""),
@@ -77,6 +80,7 @@ export default function RecordForm({
       formFields[kind].map((f) => [
         f.key,
         record?.payload[f.key] ??
+          draft?.payload[f.key] ??
           (kind === "candidates" &&
           ["offer_date", "joining_date"].includes(f.key)
             ? ""
@@ -87,6 +91,7 @@ export default function RecordForm({
   );
   const [items, setItems] = useState<LineItem[]>(
       record?.items ||
+        draft?.items ||
         (["rfqs", "requirements", "quotations"].includes(kind)
           ? [emptyItem()]
           : []),
@@ -292,17 +297,27 @@ export default function RecordForm({
             {!f.default && (
               <option value="">Select a {f.label.toLowerCase()}</option>
             )}
-            {(f.options || settings.data?.categories || []).map(
-              (option: string) => (
-                <option key={option} value={option}>
-                  {label(option)}
-                </option>
-              ),
-            )}
+            {(
+              f.options ||
+              masterData.data?.category?.map((c: any) => c.label) ||
+              settings.data?.categories ||
+              []
+            ).map((option: string) => (
+              <option key={option} value={option}>
+                {label(option)}
+              </option>
+            ))}
           </select>
         ) : (
           <Input
             name={f.key}
+            list={
+              f.key === "unit"
+                ? "record-master-units"
+                : f.key === "certifications"
+                  ? "record-master-certifications"
+                  : undefined
+            }
             type={f.type || "text"}
             value={
               f.type === "datetime-local" && payload[f.key]?.includes("Z")
@@ -504,6 +519,16 @@ export default function RecordForm({
                   </Field>
                 )}
                 {formFields[kind].map(renderField)}
+                <datalist id="record-master-units">
+                  {masterData.data?.unit?.map((v: any) => (
+                    <option key={v.id} value={v.label} />
+                  ))}
+                </datalist>
+                <datalist id="record-master-certifications">
+                  {masterData.data?.certification?.map((v: any) => (
+                    <option key={v.id} value={v.label} />
+                  ))}
+                </datalist>
               </div>
               {["rfqs", "requirements"].includes(kind) && (
                 <section className="form-section">
@@ -593,41 +618,46 @@ export default function RecordForm({
                         </Button>
                       )}
                     </div>
-                    {!linkedItems && lookups.data?.catalog.length > 0 && (
-                      <select
-                        className="input catalog-import"
-                        aria-label="Add from catalog"
-                        value=""
-                        onChange={(e) => {
-                          const entry = lookups.data.catalog.find(
-                            (c: WorkRecord) => c.id === e.target.value,
-                          );
-                          if (entry)
-                            setItems((i) => [
-                              ...i.filter((v) => v.name || v.unit_price),
-                              {
-                                name: entry.title,
-                                specification:
-                                  entry.payload.specifications || "",
-                                quantity: entry.payload.moq || 1,
-                                unit: entry.payload.unit || "units",
-                                unit_price: entry.payload.price || 0,
-                                tax: entry.payload.tax || 18,
-                                discount: 0,
-                              },
-                            ]);
-                        }}
-                      >
-                        <option value="">
-                          + Add an item from your catalog
-                        </option>
-                        {lookups.data.catalog.map((c: WorkRecord) => (
-                          <option key={c.id} value={c.id}>
-                            {c.title} · {c.payload.sku}
+                    {!linkedItems &&
+                      !quoteItems &&
+                      lookups.data?.catalog.length > 0 && (
+                        <select
+                          className="input catalog-import"
+                          aria-label="Add from catalog"
+                          value=""
+                          onChange={(e) => {
+                            const entry = lookups.data.catalog.find(
+                              (c: WorkRecord) => c.id === e.target.value,
+                            );
+                            if (entry && entry.currency === currency)
+                              setItems((i) => [
+                                ...i.filter((v) => v.name || v.unit_price),
+                                {
+                                  catalog_item_id: entry.id,
+                                  name: entry.title,
+                                  specification:
+                                    entry.payload.specifications || "",
+                                  quantity: entry.payload.moq || 1,
+                                  unit: entry.payload.unit || "units",
+                                  unit_price: entry.payload.price || 0,
+                                  tax: entry.payload.tax ?? 18,
+                                  discount: 0,
+                                },
+                              ]);
+                          }}
+                        >
+                          <option value="">
+                            + Add an item from your catalog
                           </option>
-                        ))}
-                      </select>
-                    )}
+                          {lookups.data.catalog
+                            .filter((c: WorkRecord) => c.currency === currency)
+                            .map((c: WorkRecord) => (
+                              <option key={c.id} value={c.id}>
+                                {c.title} · {c.payload.sku}
+                              </option>
+                            ))}
+                        </select>
+                      )}
                     <div className="line-item-editor">
                       {items.map((item, index) => (
                         <div className="line-item-row" key={index}>
@@ -635,6 +665,49 @@ export default function RecordForm({
                             {String(index + 1).padStart(2, "0")}
                           </span>
                           <div className="line-item-fields">
+                            {quoteItems && lookups.data?.catalog.length > 0 && (
+                              <div className="catalog-line-choice">
+                                <select
+                                  className="input"
+                                  aria-label={`Use catalog pricing for item ${index + 1}`}
+                                  value=""
+                                  onChange={(e) => {
+                                    const entry = lookups.data.catalog.find(
+                                      (c: WorkRecord) =>
+                                        c.id === e.target.value,
+                                    );
+                                    if (entry)
+                                      setItems((all) =>
+                                        all.map((it, n) =>
+                                          n === index
+                                            ? {
+                                                ...it,
+                                                catalog_item_id: entry.id,
+                                                unit_price:
+                                                  entry.payload.price || 0,
+                                                tax: entry.payload.tax ?? 18,
+                                              }
+                                            : it,
+                                        ),
+                                      );
+                                  }}
+                                >
+                                  <option value="">
+                                    Use pricing from your catalog…
+                                  </option>
+                                  {lookups.data.catalog
+                                    .filter(
+                                      (c: WorkRecord) =>
+                                        c.currency === currency,
+                                    )
+                                    .map((c: WorkRecord) => (
+                                      <option key={c.id} value={c.id}>
+                                        {c.title} · {c.payload.sku}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                            )}
                             <div className="line-item-name">
                               <Input
                                 aria-label={`Item ${index + 1} name`}
@@ -713,6 +786,11 @@ export default function RecordForm({
                                 <Field key={col.key} label={col.label}>
                                   <Input
                                     aria-label={`Item ${index + 1} ${col.label.toLowerCase()}`}
+                                    list={
+                                      col.key === "unit"
+                                        ? "record-master-units"
+                                        : undefined
+                                    }
                                     type={col.number ? "number" : "text"}
                                     step={
                                       col.key === "quantity" ? ".001" : ".01"

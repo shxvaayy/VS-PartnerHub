@@ -5,12 +5,19 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { config, INTERNAL_ORG_ID } from "./config.js";
-import { db, now } from "./db.js";
+import { db, now, parseJson } from "./db.js";
 import { assert } from "./errors.js";
 import { authenticated, can, permit } from "./security.js";
 import { accessibleRecord } from "./record-service.js";
 import { audit, notifyOrganizations } from "./events.js";
 import { documentSchema, pagination, uuid } from "./validation.js";
+import { activeDocumentCategory, documentPolicies } from "./master-data.js";
+import {
+  extractionReviewSchema,
+  recordExtractionReview,
+  validateExtraction,
+} from "./document-intelligence.js";
+import { emptyIdentity } from "../shared/ai.js";
 export const documentsRouter = Router();
 documentsRouter.use(authenticated);
 const upload = multer({
@@ -118,11 +125,23 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
       403,
       "Your role cannot upload company documents.",
     );
+  const organization = await db("organizations").where({ id: orgId }).first();
+  assert(organization, 422, "Organization not found.");
   assert(
-    await db("organizations").where({ id: orgId }).first(),
+    await activeDocumentCategory(input.category),
     422,
-    "Organization not found.",
+    "Choose an active document category.",
   );
+  if (!input.record_id) {
+    const policy = (await documentPolicies(organization.type)).find(
+      (p) => p.category === input.category,
+    );
+    assert(
+      !policy?.expiry_required || input.expires_at,
+      422,
+      "An expiry date is required for this document category.",
+    );
+  }
   const id = randomUUID(),
     key = `${id}.${detected === "application/pdf" ? "pdf" : detected === "image/png" ? "png" : "jpg"}`;
   await mkdir(config.uploadDir, { recursive: true });
@@ -132,6 +151,11 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
   });
   try {
     await db.transaction(async (k) => {
+      if (input.record_id) {
+        let lock = k("records").where({ id: input.record_id });
+        if (db.client.config.client === "pg") lock = lock.forUpdate();
+        await lock.first();
+      }
       let version = 1;
       if (input.previous_id) {
         const previous = await k("documents")
@@ -152,6 +176,14 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
             .first()),
           409,
           "A newer version already exists. Renew the latest document.",
+        );
+        assert(
+          !(await k("signature_envelopes")
+            .where({ document_id: previous.id })
+            .whereIn("status", ["pending", "completed"])
+            .first()),
+          409,
+          "This document is part of a signature request. Void an open request, or create an amended contract with a new PDF; the signed original is preserved.",
         );
         version = previous.version + 1;
       }
@@ -230,6 +262,68 @@ documentsRouter.get("/:id/download", async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.download(path.join(config.uploadDir, doc.storage_key), doc.name);
 });
+documentsRouter.get("/:id", async (req, res) => {
+  const doc = await db("documents")
+    .where({ id: uuid.parse(req.params.id) })
+    .first();
+  assert(doc, 404, "Document not found.");
+  if (doc.record_id) await accessibleRecord(doc.record_id, req.user);
+  else
+    assert(
+      can(req.user, "documents") &&
+        (req.user.internal || doc.organization_id === req.user.organization_id),
+      404,
+      "Document not found.",
+    );
+  res.json(cleanDocument(doc));
+});
+documentsRouter.get(
+  "/:id/extractions",
+  permit("documents", "review"),
+  async (req, res) => {
+    assert(
+      req.user.internal && can(req.user, "verification", "review"),
+      403,
+      "Only the verification team can view compliance extraction reviews.",
+    );
+    const doc = await db("documents")
+      .where({ id: uuid.parse(req.params.id), record_id: null })
+      .first();
+    assert(doc, 404, "Company document not found.");
+    const organization = await db("organizations")
+      .where({ id: doc.organization_id })
+      .first();
+    const rows = await db("document_extractions")
+      .where({ document_id: doc.id })
+      .orderBy("created_at", "desc")
+      .limit(20);
+    const items = [];
+    for (const row of rows) {
+      const result = parseJson(row.result);
+      const reviews = await db("document_extraction_reviews")
+        .where({ extraction_id: row.id })
+        .orderBy("created_at", "desc");
+      items.push({
+        ...row,
+        result: {
+          ...result,
+          identity: result.identity || emptyIdentity(),
+          validation: validateExtraction(
+            result.identity || emptyIdentity(),
+            doc,
+            organization,
+          ),
+        },
+        reviews: reviews.map((review) => ({
+          ...review,
+          fields: parseJson(review.fields),
+          validation: parseJson(review.validation, []),
+        })),
+      });
+    }
+    res.json({ items, documentStatus: doc.status });
+  },
+);
 documentsRouter.post(
   "/:id/review",
   permit("documents", "review"),
@@ -244,6 +338,7 @@ documentsRouter.post(
         .object({
           status: z.enum(["under_review", "approved", "rejected"]),
           note: z.string().trim().max(2000).default(""),
+          extraction: extractionReviewSchema.optional(),
         })
         .parse(req.body);
     if (data.status === "rejected")
@@ -253,7 +348,9 @@ documentsRouter.post(
         "Give the organization a reason for rejection.",
       );
     await db.transaction(async (k) => {
-      const doc = await k("documents").where({ id, record_id: null }).first();
+      let query = k("documents").where({ id, record_id: null });
+      if (db.client.config.client === "pg") query = query.forUpdate();
+      const doc = await query.first();
       assert(doc, 404, "Company document not found.");
       assert(
         !(await k("documents").where({ previous_id: id }).first()),
@@ -267,10 +364,19 @@ documentsRouter.post(
           "An expired document cannot be approved.",
         );
       assert(
-        doc.status !== data.status,
+        doc.status !== data.status || Boolean(data.extraction),
         409,
         "This document already has that status.",
       );
+      if (data.extraction)
+        await recordExtractionReview(
+          k,
+          doc,
+          req.user,
+          data.extraction,
+          data.status,
+          data.note,
+        );
       await k("documents").where({ id }).update({
         status: data.status,
         review_note: data.note,

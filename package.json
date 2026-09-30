@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "VS PartnerHub — partner operations, procurement and recruitment",
+  "description": "VS PartnerHub \u2014 partner operations, procurement and recruitment",
   "engines": {
     "node": ">=22.21.0"
   },
@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:postgres": "node scripts/test-postgres.mjs",
+    "test:auth-smtp": "node --import tsx scripts/auth-smtp-browser.mjs",
     "test:production": "npm run build && node scripts/production-smoke.mjs",
     "preview:audit": "node scripts/preview-audit.mjs",
     "audit:accessibility": "node scripts/accessibility-audit.mjs",
@@ -26,13 +27,25 @@
     "db:seed": "tsx server/cli.ts seed",
     "db:backup": "tsx server/cli.ts backup",
     "admin:create": "tsx server/cli.ts admin",
-    "maintenance": "tsx server/cli.ts maintenance"
+    "maintenance": "tsx server/cli.ts maintenance",
+    "verify:gemini": "node --import tsx scripts/verify-gemini.mjs",
+    "test:files": "node --import tsx scripts/verify-files.mjs",
+    "mobile:sync": "cap sync",
+    "mobile:ios": "cap open ios",
+    "mobile:android": "cap open android",
+    "mobile:assets": "node scripts/mobile-assets.mjs",
+    "report:verification": "node scripts/verification-report.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@fontsource-variable/inter": "^5.3.0",
     "@tanstack/react-query": "^5.90.2",
     "better-sqlite3": "^12.4.1",
     "cookie-parser": "^1.4.7",
+    "csv-parse": "^7.0.3",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -42,15 +55,20 @@
     "lucide-react": "^0.468.0",
     "multer": "^2.0.2",
     "nodemailer": "^10.0.12",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "pg": "^8.16.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.9.1",
     "recharts": "^3.2.1",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.1.11"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@capacitor/cli": "^8.5.2",
     "@playwright/test": "^1.55.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie-parser": "^1.4.9",
@@ -61,14 +79,21 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
+    "@types/smtp-server": "^3.5.13",
     "@types/supertest": "^6.0.3",
     "@vitejs/plugin-react": "^5.0.3",
     "concurrently": "^9.2.1",
     "prettier": "^3.9.9",
+    "smtp-server": "^3.19.15",
     "supertest": "^7.1.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
     "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

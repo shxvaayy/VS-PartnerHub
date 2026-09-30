@@ -74,6 +74,13 @@ try {
       "settings",
       "notifications",
       "tickets",
+      "ai",
+      "approvals",
+      "integrations",
+      "master-data",
+      "resources",
+      "inquiries",
+      "insights",
     ];
     for (const route of workspaces) {
       await page.goto(`${base}/app/${route}`, { waitUntil: "networkidle" });

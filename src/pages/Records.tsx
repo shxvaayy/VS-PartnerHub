@@ -61,6 +61,9 @@ import {
 import { moduleIcons } from "../components/icons";
 import RecordForm from "../components/RecordForm";
 import { DocumentUpload } from "./Documents";
+import { ImportModal } from "../components/PartnerOperations";
+import SigningPanel from "../components/SigningPanel";
+import { ApprovalTrail } from "./Approvals";
 import {
   label,
   moduleDefinitions,
@@ -83,6 +86,7 @@ export default function Records() {
     kind = rawKind as Module,
     [params, setParams] = useSearchParams();
   const { user } = useAuth(),
+    [importing, setImporting] = useState(false),
     [view, setView] = useState<"list" | "board">("list"),
     [query, setQuery] = useState(params.get("q") || "");
   const definition = moduleDefinitions[kind],
@@ -152,6 +156,12 @@ export default function Records() {
           <Download size={16} />
           Export
         </a>
+        {result.data?.can_create &&
+          ["catalog", "requirements", "candidates"].includes(kind) && (
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              Import CSV
+            </Button>
+          )}
         {result.data?.can_create && (
           <Button onClick={() => setParam("new", "true")}>
             <Plus size={17} />
@@ -161,6 +171,12 @@ export default function Records() {
           </Button>
         )}
       </PageHeader>
+      {importing && (
+        <ImportModal
+          kind={kind as "catalog" | "requirements" | "candidates"}
+          onClose={() => setImporting(false)}
+        />
+      )}
       {kind === "payments" && (
         <div className="info-banner payment-info">
           <ShieldCheck size={20} />
@@ -495,19 +511,24 @@ export function RecordDetail() {
     setBusy(true);
     setError(null);
     try {
-      await api(`/records/${kind}/${id}/${renew ? "renew" : "transition"}`, {
-        method: "POST",
-        body: JSON.stringify(
-          renew
-            ? { end_date: renewDate, note, version: r.version }
-            : { status: transition, note, version: r.version },
-        ),
-      });
+      const updated = await api(
+        `/records/${kind}/${id}/${renew ? "renew" : "transition"}`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            renew
+              ? { end_date: renewDate, note, version: r.version }
+              : { status: transition, note, version: r.version },
+          ),
+        },
+      );
       await client.invalidateQueries();
       toast(
         renew
           ? "Renewal submitted for review."
-          : `${definition.singular} updated to ${label(transition).toLowerCase()}.`,
+          : updated.status !== transition
+            ? "Approval recorded. The next reviewer must complete their step."
+            : `${definition.singular} updated to ${label(updated.status).toLowerCase()}.`,
       );
       setTransition("");
       setRenew(false);
@@ -630,6 +651,11 @@ export function RecordDetail() {
         description={`Created ${formatDate(r.created_at)} · Version ${r.version}`}
       >
         <Badge status={r.status} />
+        {user!.permissions.ai?.includes("view") && (
+          <Link className="button button-secondary" to={`/app/ai?record=${id}`}>
+            Ask VS AI <ArrowUpRight size={15} />
+          </Link>
+        )}
         {r.can_edit && (
           <Button variant="secondary" onClick={() => setEditing(true)}>
             Edit details
@@ -745,6 +771,15 @@ export function RecordDetail() {
                 title: kind === "tickets" ? "Conversation" : "Clarifications",
               },
               { key: "history", Icon: History, title: "History & versions" },
+              ...(kind === "contracts"
+                ? [
+                    {
+                      key: "signatures",
+                      Icon: ShieldCheck,
+                      title: "Signatures",
+                    },
+                  ]
+                : []),
             ].map((t) => (
               <button
                 key={t.key}
@@ -756,6 +791,9 @@ export function RecordDetail() {
               </button>
             ))}
           </div>
+          {tab === "signatures" && kind === "contracts" && (
+            <SigningPanel record={r} />
+          )}
           {tab === "overview" && (
             <div className="detail-content">
               {r.payload.description && (
@@ -1076,6 +1114,13 @@ export function RecordDetail() {
           )}
         </div>
         <aside className="detail-side">
+          {[
+            "quotations",
+            "orders",
+            "contracts",
+            "invoices",
+            "payments",
+          ].includes(kind) && <ApprovalTrail record={r} />}
           <div className="card detail-help">
             <span className="help-illustration">
               <ShieldCheck size={31} />
@@ -1232,7 +1277,14 @@ export function Comparison() {
         eyebrow="A CLEARER WAY TO DECIDE"
         title="Compare with confidence."
         description={rfq.title}
-      />
+      >
+        <Link
+          className="button button-secondary"
+          to={`/app/ai?mode=comparison&rfq=${id}`}
+        >
+          Analyze with VS AI <ArrowUpRight size={16} />
+        </Link>
+      </PageHeader>
       <div className="info-banner">
         <GitCompareArrows size={23} />
         <p>

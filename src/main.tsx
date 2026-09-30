@@ -3,6 +3,12 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@fontsource-variable/inter";
 import "./styles.css";
+import "./enterprise.css";
+import "./home.css";
+import "./auth.css";
+import "./navigation.css";
+import { initializeMobile } from "./lib/mobile";
+void initializeMobile().catch(() => {});
 import App from "./App";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },

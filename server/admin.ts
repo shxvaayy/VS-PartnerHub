@@ -12,7 +12,13 @@ import {
   permit,
   secret,
 } from "./security.js";
-import { audit, queueEmail } from "./events.js";
+import {
+  audit,
+  queueEmail,
+  requireEmailDelivery,
+  deliverEmails,
+} from "./events.js";
+import { emailConfiguration, emailConfigured } from "./integration-config.js";
 import { email, pagination, uuid } from "./validation.js";
 import {
   defaultPermissions,
@@ -135,6 +141,7 @@ adminRouter.get("/team", permit("team"), async (req, res) => {
   });
 });
 adminRouter.post("/team/invite", permit("team", "manage"), async (req, res) => {
+  await requireEmailDelivery();
   assertActive(req.user);
   const data = z
     .object({
@@ -170,7 +177,9 @@ adminRouter.post("/team/invite", permit("team", "manage"), async (req, res) => {
     409,
     "This email is already registered.",
   );
-  const token = secret();
+  const token = secret(),
+    invitationId = randomUUID(),
+    expiresAt = new Date(Date.now() + 72 * 60 * 60000).toISOString();
   await db.transaction(async (k) => {
     assert(
       !(await k("invitations")
@@ -181,22 +190,27 @@ adminRouter.post("/team/invite", permit("team", "manage"), async (req, res) => {
       "This person already has a pending invitation.",
     );
     await k("invitations").insert({
-      id: randomUUID(),
+      id: invitationId,
       organization_id: orgId,
       name: data.name,
       email: data.email,
       role: data.role,
       token_hash: hashToken(token),
       invited_by: req.user.id,
-      expires_at: new Date(Date.now() + 72 * 60 * 60000).toISOString(),
+      expires_at: expiresAt,
       created_at: now(),
     });
-    await queueEmail(
+    const emailId = await queueEmail(
       k,
       data.email,
       "You’re invited to VS PartnerHub",
       `${req.user.name} invited you to join VS PartnerHub.\n\nAccept your invitation: ${config.appUrl}/accept-invitation?token=${token}\n\nThis link expires in 72 hours.`,
+      undefined,
+      { expiresAt },
     );
+    await k("invitations")
+      .where({ id: invitationId })
+      .update({ email_id: emailId });
     await audit(
       k,
       req.user,
@@ -207,6 +221,7 @@ adminRouter.post("/team/invite", permit("team", "manage"), async (req, res) => {
       `${data.email} · ${data.role}`,
     );
   });
+  void deliverEmails().catch(() => {});
   res.status(201).json({
     ok: true,
     ...(config.demo
@@ -305,6 +320,11 @@ adminRouter.delete(
     );
     await db.transaction(async (k) => {
       await k("invitations").where({ id }).update({ expires_at: now() });
+      if (invitation.email_id)
+        await k("email_outbox")
+          .where({ id: invitation.email_id })
+          .whereIn("status", ["queued", "failed", "blocked", "local"])
+          .update({ status: "expired", body: "[Revoked invitation]" });
       await audit(k, req.user, "invitation_revoked", "team", { id });
     });
     res.json({ ok: true });
@@ -345,6 +365,12 @@ adminRouter.patch("/roles/:id", permit("roles", "manage"), async (req, res) => {
     "reports",
     "audit",
     "discovery",
+    "ai",
+    "contacts",
+    "integrations",
+    "approvals",
+    "master-data",
+    "resources",
   ]);
   const role = await db("roles").where({ id: req.params.id }).first();
   assert(role, 404, "Role not found.");
@@ -382,7 +408,7 @@ adminRouter.get("/settings", async (req, res) => {
   if (req.user.role === "super_admin")
     res.json({
       ...settings,
-      emailConfigured: Boolean(config.smtp.host),
+      emailConfigured: emailConfigured(await emailConfiguration()),
       database: config.databaseUrl ? "PostgreSQL" : "SQLite",
       demo: config.demo,
     });
@@ -470,6 +496,10 @@ adminRouter.get("/email-status", async (req, res) => {
         "created_at",
         "sent_at",
         "last_error",
+        "provider",
+        "provider_reference",
+        "delivered_at",
+        "expires_at",
       )
       .orderBy("created_at", "desc")
       .limit(100),
@@ -481,10 +511,15 @@ adminRouter.post("/email-status/:id/retry", async (req, res) => {
     403,
     "Only a Super Admin can retry mail delivery.",
   );
-  assert(config.smtp.host, 422, "Configure SMTP before retrying email.");
+  assert(
+    emailConfigured(await emailConfiguration()),
+    422,
+    "Connect your email provider before retrying delivery.",
+  );
   const id = uuid.parse(req.params.id);
   const changed = await db("email_outbox")
     .where({ id, status: "failed" })
+    .where((q) => q.whereNull("expires_at").orWhere("expires_at", ">", now()))
     .update({
       status: "queued",
       attempts: 0,
@@ -493,5 +528,6 @@ adminRouter.post("/email-status/:id/retry", async (req, res) => {
     });
   assert(changed, 422, "Only failed email can be retried.");
   await audit(db, req.user, "email_retry_requested", "notifications", { id });
+  void deliverEmails(id).catch(() => {});
   res.json({ ok: true });
 });

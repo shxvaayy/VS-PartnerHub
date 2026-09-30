@@ -4,6 +4,7 @@ import {
   timingSafeEqual,
   createHash,
   createHmac,
+  randomUUID,
 } from "node:crypto";
 import { promisify } from "node:util";
 import type { RequestHandler, Response } from "express";
@@ -43,7 +44,15 @@ export async function verifyPassword(password: string, stored: string) {
   );
 }
 export function serializeOrg(org: any): Organization {
-  return { ...org, details: parseJson(org.details) };
+  const { logo_key, logo_mime: _mime, ...safe } = org;
+  return {
+    ...safe,
+    marketplace_visible: Boolean(org.marketplace_visible),
+    logo_url: logo_key
+      ? `/api/organizations/${org.id}/logo?v=${encodeURIComponent(org.updated_at)}`
+      : null,
+    details: parseJson(org.details),
+  };
 }
 export async function getUser(
   id: string,
@@ -124,6 +133,13 @@ export const sessionMiddleware: RequestHandler = async (req, _res, next) => {
           req.user = user;
           req.csrfToken = session.csrf_token;
           req.sessionId = session.id;
+          if (
+            !session.last_seen_at ||
+            Date.parse(session.last_seen_at) < Date.now() - 60000
+          )
+            await db("sessions")
+              .where({ id: session.id })
+              .update({ last_seen_at: now() });
         }
       }
     }
@@ -212,10 +228,13 @@ export async function createSession(
   const csrfToken = secret();
   await k("sessions").insert({
     id: hashToken(token),
+    public_id: randomUUID(),
     user_id: userId,
     csrf_token: csrfToken,
     expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
     created_at: now(),
+    last_seen_at: now(),
+    user_agent: (res.req?.get("user-agent") || "").slice(0, 500),
   });
   res.cookie("ph_session", token, {
     httpOnly: true,

@@ -3,6 +3,7 @@ import { audit, notifyOrganizations } from "./events.js";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
+import { documentPolicies } from "./master-data.js";
 let running = false;
 export async function maintenance() {
   if (running) return;
@@ -11,11 +12,8 @@ export async function maintenance() {
     const settings = parseJson(
       (await db("settings").where({ key: "platform" }).first())?.value,
     );
-    const windows = [...(settings.documentExpiryDays || [90, 60, 30]), 0].sort(
-      (a: number, b: number) => a - b,
-    );
     const today = now().slice(0, 10),
-      horizon = new Date(Date.now() + Math.max(...windows) * 86400000)
+      horizon = new Date(Date.now() + 365 * 86400000)
         .toISOString()
         .slice(0, 10);
     const documents = await db("documents")
@@ -26,6 +24,18 @@ export async function maintenance() {
         db("documents as next").whereRaw("next.previous_id = documents.id"),
       );
     for (const doc of documents) {
+      const org = await db("organizations")
+        .where({ id: doc.organization_id })
+        .select("type")
+        .first();
+      const policy = (await documentPolicies(org?.type || "vendor")).find(
+        (p) => p.category === doc.category,
+      );
+      const windows = [
+        ...(policy?.reminder_days ||
+          settings.documentExpiryDays || [90, 60, 30]),
+        0,
+      ].sort((a: number, b: number) => a - b);
       const days = Math.ceil(
           (Date.parse(doc.expires_at) - Date.parse(today)) / 86400000,
         ),
@@ -110,6 +120,27 @@ export async function maintenance() {
         );
       await db.transaction(async (k) => {
         for (const record of [candidate, ...interviews]) {
+          const documentIds = files
+            .filter((f) => f.record_id === record.id)
+            .map((f) => f.id);
+          if (documentIds.length)
+            await k("document_extractions")
+              .whereIn("document_id", documentIds)
+              .delete();
+          const conversations = await k("ai_messages")
+            .where("sources", "like", `%${record.id}%`)
+            .distinct("conversation_id");
+          if (conversations.length) {
+            const ids = conversations.map((c) => c.conversation_id);
+            await k("ai_conversations")
+              .whereIn("id", ids)
+              .update({ title: "Archived recruitment conversation" });
+            await k("ai_messages").whereIn("conversation_id", ids).update({
+              content: "[Removed under candidate retention policy]",
+              structured: "{}",
+              sources: "[]",
+            });
+          }
           await k("record_versions").where({ record_id: record.id }).delete();
           await k("comments").where({ record_id: record.id }).delete();
           await k("documents").where({ record_id: record.id }).delete();
@@ -141,7 +172,25 @@ export async function maintenance() {
         );
     }
     await db("sessions").where("expires_at", "<", now()).delete();
+    await db("auth_attempts").where("expires_at", "<", now()).delete();
     await db("auth_tokens").where("expires_at", "<", now()).delete();
+    await db("import_batches")
+      .where("expires_at", "<", now())
+      .whereNot("status", "completed")
+      .update({
+        status: "expired",
+        rows: "[]",
+        results: "[]",
+        updated_at: now(),
+      });
+    await db("signature_parties")
+      .whereNotNull("otp_expires_at")
+      .where("otp_expires_at", "<", now())
+      .update({ otp_hash: null, challenge_id: null });
+    await db("ai_requests")
+      .where({ status: "running" })
+      .where("created_at", "<", new Date(Date.now() - 5 * 60000).toISOString())
+      .update({ status: "interrupted", completed_at: now() });
     await db("email_outbox")
       .whereIn("status", ["local", "failed", "queued"])
       .where(

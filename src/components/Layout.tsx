@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Link,
   NavLink,
@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   ShieldHalf,
   Sparkles,
+  PlugZap,
   UsersRound,
   X,
 } from "lucide-react";
@@ -43,10 +44,12 @@ import {
 import { moduleIcons } from "./icons";
 import {
   moduleDefinitions,
+  organizationLabels,
   roleLabels,
   type Module,
 } from "../../shared/domain";
 import { relativeTime } from "../lib/format";
+import InstallApp from "./InstallApp";
 
 export default function Layout() {
   const { user, loading, error, signOut, demo } = useAuth();
@@ -56,8 +59,55 @@ export default function Layout() {
   const [mobile, setMobile] = useState(false),
     [searchOpen, setSearchOpen] = useState(false),
     [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches,
+  );
+  const sidebarRef = useRef<HTMLElement>(null),
+    menuRef = useRef<HTMLButtonElement>(null);
   const notifications = useApi<any>("/notifications?limit=5", Boolean(user));
   const readAll = useAction("/notifications/read-all");
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const resize = () => {
+      setNarrow(media.matches);
+      if (!media.matches) setMobile(false);
+    };
+    media.addEventListener("change", resize);
+    return () => media.removeEventListener("change", resize);
+  }, []);
+  useEffect(() => {
+    if (!mobile || !narrow) return;
+    const sidebar = sidebarRef.current,
+      main = document.querySelector<HTMLElement>(".app-main");
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    if (main) main.inert = true;
+    sidebar?.querySelector<HTMLButtonElement>(".sidebar-close")?.focus();
+    const trap = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = Array.from(
+        sidebar?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), summary, input, [tabindex="0"]',
+        ) || [],
+      ).filter((element) => element.getClientRects().length > 0);
+      const first = controls[0],
+        last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    sidebar?.addEventListener("keydown", trap);
+    return () => {
+      sidebar?.removeEventListener("keydown", trap);
+      document.body.style.overflow = overflow;
+      if (main) main.inert = false;
+      menuRef.current?.focus();
+    };
+  }, [mobile, narrow]);
   useEffect(() => {
     setMobile(false);
     window.scrollTo(0, 0);
@@ -77,7 +127,13 @@ export default function Layout() {
   if (error)
     return <ErrorState error={error} retry={() => window.location.reload()} />;
   if (!user)
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location.pathname + location.search }}
+        replace
+      />
+    );
   const has = (module: string) =>
     Boolean(user.permissions[module]?.includes("view"));
   const activeModule = location.pathname.split("/")[2] || "overview";
@@ -94,6 +150,13 @@ export default function Layout() {
     roles: "Roles & permissions",
     settings: "Settings",
     notifications: "Notifications",
+    ai: "VS AI assistant",
+    integrations: "Integrations",
+    approvals: "Approvals",
+    resources: "Resources & bench",
+    "master-data": "Master data & compliance",
+    inquiries: "Public enquiries",
+    insights: "Operational outlook",
   };
   const title =
     labels[activeModule] ||
@@ -160,12 +223,30 @@ export default function Layout() {
         />
       )}
       <aside
+        ref={sidebarRef}
+        id="workspace-navigation"
         className={`sidebar ${mobile ? "sidebar-open" : ""}`}
         aria-label="Main navigation"
+        role={mobile && narrow ? "dialog" : undefined}
+        aria-modal={mobile && narrow ? true : undefined}
+        inert={narrow && !mobile}
       >
-        <Link className="sidebar-brand" to="/app">
-          <Logo light />
-        </Link>
+        <div className="sidebar-brand-row">
+          <Link
+            className="sidebar-brand"
+            to="/app"
+            onClick={() => setMobile(false)}
+          >
+            <Logo light />
+          </Link>
+          <button
+            className="sidebar-close"
+            aria-label="Close navigation"
+            onClick={() => setMobile(false)}
+          >
+            <X size={21} />
+          </button>
+        </div>
         <div className="workspace-selector">
           <span className="workspace-icon">
             {user.internal ? (
@@ -182,15 +263,42 @@ export default function Layout() {
                   user.organization?.legal_name}
             </strong>
             <small>
-              {user.internal ? "Internal workspace" : "Partner workspace"}
+              {user.internal
+                ? roleLabels[user.role]
+                : user.organization
+                  ? organizationLabels[user.organization.type]
+                  : "Partner workspace"}
             </small>
           </div>
-          <ShieldCheck size={16} />
+          {user.internal || user.organization?.status === "active" ? (
+            <ShieldCheck size={16} aria-label="Verified organization" />
+          ) : (
+            <FileClock size={16} aria-label="Verification pending" />
+          )}
+        </div>
+        <div className="sidebar-mobile-shortcuts">
+          <button
+            onClick={() => {
+              setMobile(false);
+              setSearchOpen(true);
+            }}
+          >
+            <Search size={18} />
+            <span>Search</span>
+          </button>
+          <Link to="/app/notifications" onClick={() => setMobile(false)}>
+            <Bell size={18} />
+            <span>Notifications</span>
+            {notifications.data?.unread > 0 && (
+              <b>{notifications.data.unread}</b>
+            )}
+          </Link>
         </div>
         <div className="sidebar-scroll">
           <div className="nav-section">
             <span className="nav-label">WORKSPACE</span>
             {nav("/app", "Overview", LayoutDashboard)}
+            {has("ai") && nav("/app/ai", "VS AI assistant", Sparkles)}
             {has("organizations") &&
               nav("/app/organizations", "Partner directory", Building2)}
             {has("discovery") &&
@@ -201,6 +309,18 @@ export default function Layout() {
               nav("/app/profile", "Company profile", Building2)}
             {has("reports") &&
               nav("/app/reports", "Reports & analytics", BarChart3)}
+            {has("reports") &&
+              nav("/app/insights", "Operational outlook", BarChart3)}
+            {has("resources") &&
+              (user.internal ||
+                [
+                  "vendor",
+                  "staffing",
+                  "recruitment",
+                  "service_provider",
+                  "technology_partner",
+                ].includes(user.organization?.type || "")) &&
+              nav("/app/resources", "Resources & bench", UsersRound)}
           </div>
           {business.some(has) && (
             <div className="nav-section">
@@ -253,9 +373,19 @@ export default function Layout() {
               nav("/app/roles", "Roles & permissions", ShieldHalf)}
             {has("audit") && nav("/app/audit", "Audit trail", FileClock)}
             {has("settings") && nav("/app/settings", "Settings", Settings2)}
+            {has("integrations") &&
+              nav("/app/integrations", "Integrations", PlugZap)}
+            {has("approvals") &&
+              nav("/app/approvals", "Approvals", ShieldCheck)}
+            {has("master-data") &&
+              nav("/app/master-data", "Master data & compliance", Settings2)}
+            {user.internal &&
+              user.permissions.tickets?.includes("review") &&
+              nav("/app/inquiries", "Public enquiries", Headphones)}
           </div>
         </div>
         <div className="sidebar-bottom">
+          <InstallApp />
           <Link to="/app/tickets" className="help-card">
             <span className="help-icon">
               <Headphones size={20} />
@@ -293,7 +423,10 @@ export default function Layout() {
           <div className="breadcrumb">
             <button
               className="icon-button mobile-menu"
+              ref={menuRef}
               aria-label="Open navigation"
+              aria-controls="workspace-navigation"
+              aria-expanded={mobile}
               onClick={() => setMobile(true)}
             >
               <Menu size={22} />
@@ -305,6 +438,7 @@ export default function Layout() {
           <div className="topbar-actions">
             <button
               className="global-search-trigger"
+              aria-label="Search anything…"
               onClick={() => setSearchOpen(true)}
             >
               <Search size={17} />

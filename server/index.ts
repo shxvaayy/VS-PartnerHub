@@ -4,6 +4,7 @@ import { createApp } from "./app.js";
 import { seed, ensureInternalOrganization } from "./seed.js";
 import { deliverEmails } from "./events.js";
 import { maintenance } from "./maintenance.js";
+import { deliverWebhooks } from "./webhooks.js";
 await migrate();
 await ensureInternalOrganization();
 if (config.demo) await seed();
@@ -24,10 +25,16 @@ const maintenanceTimer = setInterval(
   () => maintenance().catch((e) => console.error("Maintenance:", e.message)),
   60 * 60000,
 );
+const webhookTimer = setInterval(
+  () =>
+    deliverWebhooks().catch((e) => console.error("Webhook worker:", e.message)),
+  15000,
+);
 await maintenance();
 async function shutdown() {
   clearInterval(emailTimer);
   clearInterval(maintenanceTimer);
+  clearInterval(webhookTimer);
   server.close(async () => {
     await db.destroy();
     process.exit(0);

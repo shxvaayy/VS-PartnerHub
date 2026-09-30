@@ -2,7 +2,7 @@
 
 ## Request path
 
-The React application uses the same-origin `/api` surface. Vite proxies it during development; Express serves compiled frontend assets in production. There are no client-side secret keys or simulated database writes.
+The React application uses the same-origin `/api` surface. Vite proxies it during development; Express serves compiled frontend assets in production. There are no client-side secret keys or simulated database writes. Eight incremental migrations add enterprise operations, authentication controls, human document review and private AI analysis reuse without resetting existing workspace data.
 
 ```mermaid
 flowchart LR
@@ -67,3 +67,11 @@ An external buyer sees verified public company capabilities through discovery, w
 The supplied deployment runs one application process and one PostgreSQL database, with persistent private upload storage. SQLite is suitable for the local demo and smaller single-process installations. The app starts migrations, seeds only in demo mode, serves requests and runs email/maintenance timers.
 
 Before running multiple application replicas, move maintenance to a designated worker, provide shared private storage and replace per-process rate limiting with a distributed store. Keep schema migrations as a controlled deployment step. The PostgreSQL adapter is verified by the same integration suite as SQLite; this is not a load-capacity benchmark.
+
+## VS AI request boundary
+
+`server/ai-retrieval.ts` validates constrained lookup plans and runs scoped queries; `assistant-rules.ts` answers common status questions directly from those results. `operational-insights.ts` computes dated signals and statistical comparisons. `gemini.ts` handles language and multimodal requests with deadlines, validated JSON and compact authorized citation keys. `ai.ts` rechecks sources before persisting private messages. The presentation layer replaces internal routes with permitted named actions, including saved history.
+
+`document-preparation.ts` reads native PDF text in bounded worker threads; scans/images use provider OCR. `document-intelligence.ts` performs deterministic field checks and records separate human corrections/decisions bound to the uploaded source hash. Server-sent progress describes actual stages. `ai-cache.ts` reuses private, unchanged analyses while preserving evidence/permission checks. See [AI.md](AI.md).
+
+Enterprise services also include reusable catalogs/imports, sequential approval policies, signature envelopes/evidence, scoped ERP tokens, signed webhook outboxes, master data, contacts/resources and public opt-in discovery. These services use the shared organization and record model; provider credentials are encrypted separately from returned settings.

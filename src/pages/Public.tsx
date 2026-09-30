@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { PasswordField, useCountdown } from "../components/AuthControls";
+import { emailHint } from "../../shared/auth";
 import {
   Link,
   useLocation,
@@ -19,6 +21,8 @@ import {
   Handshake,
   Layers3,
   LockKeyhole,
+  Pause,
+  Play,
   ShieldCheck,
   Sparkles,
   UsersRound,
@@ -42,294 +46,9 @@ import {
   organizationDescriptions,
 } from "../../shared/domain";
 import { demoAccounts, demoPassword } from "../../shared/demo";
+import EmailDeliveryStatus from "../components/EmailDeliveryStatus";
 
-export function Landing() {
-  const { user, demo } = useAuth();
-  return (
-    <div className="public-page">
-      <header className="public-header">
-        <nav className="public-nav">
-          <Link to="/">
-            <Logo />
-          </Link>
-          <div className="public-links">
-            <a href="#platform">The platform</a>
-            <a href="#partners">Who it’s for</a>
-            <a href="#how-it-works">How it works</a>
-          </div>
-          <div className="public-nav-actions">
-            <Link className="text-button" to={user ? "/app" : "/login"}>
-              {user ? "Your workspace" : "Sign in"}
-              <ArrowUpRight size={16} />
-            </Link>
-            <Link className="button button-primary" to="/register">
-              Become a partner
-              <ArrowRight size={16} />
-            </Link>
-          </div>
-        </nav>
-      </header>
-      <section className="landing-hero">
-        <div className="hero-copy">
-          <span className="overline-pill">
-            <span />A BETTER WAY TO DO BUSINESS
-          </span>
-          <h1>
-            Great partnerships.
-            <br />
-            <em>Greater possibilities.</em>
-          </h1>
-          <p>
-            Meet your next partner. Move your business forward.
-            <br className="desktop-break" /> One connected workspace for your
-            entire business network.
-          </p>
-          <div className="hero-buttons">
-            <Link className="button button-primary button-large" to="/register">
-              Build your next partnership
-              <ArrowUpRight size={18} />
-            </Link>
-            <Link
-              className="button button-secondary button-large"
-              to={demo ? "/login?demo=true" : "/login"}
-            >
-              {demo ? "Explore the workspace" : "Enter your workspace"}
-              <ArrowRight size={17} />
-            </Link>
-          </div>
-          <div className="hero-assurance">
-            <span>
-              <ShieldCheck size={16} />
-              Verified organizations
-            </span>
-            <span>
-              <LockKeyhole size={15} />
-              Secure by design
-            </span>
-            <span>
-              <UsersRound size={16} />
-              Built for every team
-            </span>
-          </div>
-        </div>
-        <div
-          className="hero-visual"
-          aria-label="A connected network of buyers, suppliers and talent partners"
-        >
-          <div className="hero-orbit orbit-one" />
-          <div className="hero-orbit orbit-two" />
-          <div className="hero-orbit orbit-three" />
-          <div className="network-center">
-            <Logo compact />
-            <strong>PartnerHub</strong>
-            <span>One connected ecosystem</span>
-          </div>
-          <div className="network-node node-top">
-            <span className="node-icon sage">
-              <Building2 size={22} />
-            </span>
-            <div>
-              <strong>Verified partners</strong>
-              <small>Trust at the foundation</small>
-            </div>
-            <CheckCircle2 size={17} />
-          </div>
-          <div className="network-node node-left">
-            <span className="node-icon lavender">
-              <UsersRound size={22} />
-            </span>
-            <div>
-              <strong>Talent, connected</strong>
-              <small>People who move you forward</small>
-            </div>
-          </div>
-          <div className="network-node node-right">
-            <span className="node-icon peach">
-              <FileCheck2 size={22} />
-            </span>
-            <div>
-              <strong>Procurement, simplified</strong>
-              <small>From requirement to payment</small>
-            </div>
-          </div>
-          <div className="network-label">
-            <span />
-            BETTER TOGETHER
-          </div>
-          <span className="orbit-dot orbit-dot-one" />
-          <span className="orbit-dot orbit-dot-two" />
-          <span className="orbit-dot orbit-dot-three" />
-        </div>
-      </section>
-      <div className="platform-strip">
-        <span>
-          One shared identity.
-          <br />
-          <strong>Endless ways to collaborate.</strong>
-        </span>
-        <div>
-          <b>09</b>
-          <span>Organization types</span>
-        </div>
-        <div>
-          <b>20+</b>
-          <span>Connected capabilities</span>
-        </div>
-        <div>
-          <b>01</b>
-          <span>Unified workspace</span>
-        </div>
-        <a href="#platform" aria-label="Explore platform">
-          <ArrowDown size={24} />
-        </a>
-      </div>
-      <section className="landing-section" id="platform">
-        <div className="section-intro">
-          <span className="eyebrow">LESS FRICTION. MORE FORWARD.</span>
-          <h2>
-            Everything your partnerships
-            <br />
-            need to thrive.
-          </h2>
-          <p>
-            Bring your partners, procurement and people together.
-            <br />
-            Give every team the clarity to do their best work.
-          </p>
-        </div>
-        <div className="feature-grid">
-          {[
-            {
-              Icon: ShieldCheck,
-              title: "Start with trust",
-              text: "Structured onboarding, verified documents and a single company profile. A stronger foundation for every relationship.",
-              color: "sage",
-              tag: "IDENTITY & COMPLIANCE",
-            },
-            {
-              Icon: Waypoints,
-              title: "Keep business moving",
-              text: "Connect requirements, quotations, purchase orders and payments. See every commitment through to completion.",
-              color: "peach",
-              tag: "SOURCE TO SETTLEMENT",
-            },
-            {
-              Icon: UsersRound,
-              title: "Find your next great hire",
-              text: "Give recruitment partners a dedicated space to submit candidates, coordinate interviews and track joining.",
-              color: "lavender",
-              tag: "PEOPLE & POSSIBILITIES",
-            },
-          ].map((f) => (
-            <div className={`feature-card ${f.color}`} key={f.title}>
-              <span className="feature-icon">
-                <f.Icon size={26} />
-              </span>
-              <span className="eyebrow">{f.tag}</span>
-              <h3>{f.title}</h3>
-              <p>{f.text}</p>
-              <Link to="/register">
-                Explore the possibilities
-                <ArrowUpRight size={17} />
-              </Link>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="partner-section" id="partners">
-        <div className="section-intro">
-          <span className="eyebrow">A PLACE FOR EVERY PARTNER</span>
-          <h2>
-            Different expertise.
-            <br />
-            Shared ambition.
-          </h2>
-          <p>A workspace that fits the way your organization works.</p>
-        </div>
-        <div className="partner-type-grid">
-          {organizationTypes.map((type) => {
-            const Icon = organizationIcons[type];
-            return (
-              <Link to={`/register?type=${type}`} key={type}>
-                <Icon size={22} />
-                <div>
-                  <h3>{organizationLabels[type]}</h3>
-                  <p>{organizationDescriptions[type]}</p>
-                </div>
-                <ArrowUpRight size={17} />
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-      <section className="landing-section" id="how-it-works">
-        <div className="section-intro">
-          <span className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</span>
-          <h2>
-            From hello to
-            <br />
-            let’s do business.
-          </h2>
-        </div>
-        <div className="how-grid">
-          {[
-            [
-              "01",
-              "Tell us about your business",
-              "Choose your organization type and build a profile that reflects what you do best.",
-            ],
-            [
-              "02",
-              "Get verified",
-              "Share your documents. Our team reviews your application and helps you get ready.",
-            ],
-            [
-              "03",
-              "Make great things happen",
-              "Discover opportunities, collaborate with partners and manage every step in one place.",
-            ],
-          ].map(([number, title, text]) => (
-            <div key={number}>
-              <span>{number}</span>
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="landing-cta">
-        <div>
-          <span className="eyebrow">LET’S GROW, TOGETHER.</span>
-          <h2>
-            Your next opportunity
-            <br />
-            is a partnership away.
-          </h2>
-        </div>
-        <Link to="/register" className="button button-lime button-large">
-          Join VS PartnerHub
-          <ArrowUpRight size={20} />
-        </Link>
-      </section>
-      <footer className="public-footer">
-        <Logo />
-        <p>
-          A Vijay Software Solutions platform.
-          <br />
-          Business, better connected.
-        </p>
-        <div>
-          <Link to="/privacy">Privacy policy</Link>
-          <Link to="/terms">Terms of use</Link>
-          <Link to="/login">Partner sign in</Link>
-        </div>
-        <small>
-          © {new Date().getFullYear()} Vijay Software Solutions Pvt. Ltd.
-        </small>
-      </footer>
-    </div>
-  );
-}
+export { default as Landing } from "./Home";
 export function AuthFrame({
   children,
   subtitle = "The right connections change everything.",
@@ -337,6 +56,7 @@ export function AuthFrame({
   children: React.ReactNode;
   subtitle?: string;
 }) {
+  const [motionPaused, setMotionPaused] = useState(false);
   return (
     <div className="auth-page">
       <aside className="auth-aside">
@@ -351,7 +71,11 @@ export function AuthFrame({
           <p>
             One trusted workspace for your partners, procurement and people.
           </p>
-          <div className="auth-illustration">
+          <div
+            className="auth-illustration"
+            aria-hidden="true"
+            data-motion={motionPaused ? "paused" : "running"}
+          >
             <div className="auth-illustration-center">
               <Handshake size={52} />
             </div>
@@ -367,6 +91,14 @@ export function AuthFrame({
             <i />
             <i />
           </div>
+          <button
+            type="button"
+            className="auth-motion-toggle"
+            onClick={() => setMotionPaused((value) => !value)}
+          >
+            {motionPaused ? <Play size={12} /> : <Pause size={12} />}
+            {motionPaused ? "Resume animation" : "Pause animation"}
+          </button>
           <div className="auth-trust">
             <CheckCircle2 size={19} />
             <div>
@@ -404,17 +136,19 @@ export function Login() {
   const { signIn, demo, accept } = useAuth(),
     navigate = useNavigate(),
     location = useLocation();
+  const setup = useApi<any>("/public/setup");
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [show, setShow] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(),
     [selected, setSelected] = useState("admin"),
     [challenge, setChallenge] = useState<{
       id: string;
       demoCode?: string;
+      resendAt?: string;
     } | null>(null),
     [otp, setOtp] = useState("");
+  const resendWait = useCountdown(challenge?.resendAt);
   const submit = async (
     e?: FormEvent,
     account?: (typeof demoAccounts)[number],
@@ -431,6 +165,7 @@ export function Login() {
         setChallenge({
           id: result.challengeId!,
           demoCode: result.verificationCode,
+          resendAt: result.resendAt,
         });
         return;
       }
@@ -438,7 +173,7 @@ export function Login() {
       const target = (location.state as any)?.from;
       navigate(
         user.email_verified
-          ? target?.startsWith("/app")
+          ? typeof target === "string" && /^\/app(?:[/?]|$)/.test(target)
             ? target
             : "/app"
           : "/verify",
@@ -456,9 +191,10 @@ export function Login() {
           <span className="eyebrow">ONE MORE STEP TO YOUR WORKSPACE</span>
           <h1>A quick security check.</h1>
           <p className="auth-description">
-            Enter the six-digit sign-in code sent to your verified email. The
-            code expires in 10 minutes.
+            Enter the six-digit code requested for{" "}
+            <strong>{email.trim()}</strong>. Your code expires in 10 minutes.
           </p>
+          <EmailDeliveryStatus challengeId={challenge.id} />
           <form
             className="form-stack"
             onSubmit={async (e) => {
@@ -474,7 +210,16 @@ export function Login() {
                   }),
                 });
                 accept(result);
-                navigate("/app");
+                const target = (location.state as any)?.from;
+                navigate(
+                  result.user.email_verified
+                    ? typeof target === "string" &&
+                      /^\/app(?:[/?]|$)/.test(target)
+                      ? target
+                      : "/app"
+                    : "/verify",
+                  { replace: true },
+                );
               } catch (e) {
                 setError(e);
               } finally {
@@ -500,6 +245,34 @@ export function Login() {
               <ArrowRight size={16} />
             </Button>
           </form>
+          <Button
+            variant="ghost"
+            disabled={busy || resendWait > 0}
+            onClick={async () => {
+              setBusy(true);
+              setError(undefined);
+              try {
+                const result = await api("/auth/resend-login", {
+                  method: "POST",
+                  body: JSON.stringify({ challengeId: challenge.id }),
+                });
+                setChallenge({
+                  id: result.challengeId,
+                  demoCode: result.verificationCode,
+                  resendAt: result.resendAt,
+                });
+                setOtp("");
+              } catch (e) {
+                setError(e);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {resendWait > 0
+              ? `Resend code in ${resendWait}s`
+              : "Resend sign-in code"}
+          </Button>
           {demo && challenge.demoCode && (
             <div className="dev-code">
               <strong>Local development code</strong>
@@ -529,7 +302,7 @@ export function Login() {
         </p>
         <form onSubmit={submit} className="form-stack">
           <FormError error={error} />
-          <Field label="Work email" required>
+          <Field label="Work email" required hint={emailHint}>
             <Input
               type="email"
               autoComplete="email"
@@ -540,26 +313,15 @@ export function Login() {
               required
             />
           </Field>
-          <Field label="Password" required>
-            <div className="password-input">
-              <Input
-                type={show ? "text" : "password"}
-                name="password"
-                autoComplete="current-password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShow(!show)}
-                aria-label={show ? "Hide password" : "Show password"}
-              >
-                {show ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </Field>
+          <PasswordField
+            label="Password"
+            name="password"
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
           <div className="form-right">
             <Link to="/forgot-password">Forgot password?</Link>
           </div>
@@ -575,6 +337,12 @@ export function Login() {
             <ArrowUpRight size={14} />
           </Link>
         </p>
+        {setup.data?.available && (
+          <p className="auth-bottom-link">
+            New installation?{" "}
+            <Link to="/setup">Create the first administrator</Link>
+          </p>
+        )}
         {demo && (
           <div className="demo-login">
             <div className="demo-login-title">
@@ -622,18 +390,27 @@ export function Recovery({ mode }: { mode: "forgot" | "reset" | "invite" }) {
     [error, setError] = useState<unknown>(),
     [done, setDone] = useState(false),
     [busy, setBusy] = useState(false);
-  const { accept } = useAuth(),
+  const { accept, refresh } = useAuth(),
     navigate = useNavigate();
   const invitation = useApi<any>(
     `/auth/invitation/${encodeURIComponent(token)}`,
-    mode === "invite" && Boolean(token),
+    mode === "invite" && Boolean(token) && !done,
   );
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const reset = useApi<any>(
+    `/auth/reset-password/${encodeURIComponent(token)}`,
+    mode === "reset" && Boolean(token) && !done,
+  );
+  const link = mode === "invite" ? invitation : reset;
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setBusy(true);
     setError(null);
-    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const data = Object.fromEntries(new FormData(event.currentTarget));
     try {
+      if (mode !== "forgot" && data.password !== data.confirm_password)
+        throw new Error(
+          "The passwords do not match. Enter the same new password in both fields.",
+        );
       const result = await api(
         `/auth/${mode === "forgot" ? "forgot-password" : mode === "reset" ? "reset-password" : "accept-invitation"}`,
         {
@@ -646,10 +423,16 @@ export function Recovery({ mode }: { mode: "forgot" | "reset" | "invite" }) {
       );
       if (mode === "invite") {
         accept(result);
-        navigate("/app");
-      } else setDone(true);
-    } catch (e) {
-      setError(e);
+        navigate("/app", { replace: true });
+      } else {
+        setDone(true);
+        if (mode === "reset") {
+          await refresh();
+          navigate("/reset-password", { replace: true });
+        }
+      }
+    } catch (error) {
+      setError(error);
     } finally {
       setBusy(false);
     }
@@ -669,73 +452,121 @@ export function Recovery({ mode }: { mode: "forgot" | "reset" | "invite" }) {
         </h1>
         <p className="auth-description">
           {mode === "forgot"
-            ? "Enter your work email and we’ll send a reset link."
+            ? "Enter your registered email to request a secure password reset link."
             : mode === "reset"
               ? "Choose a strong password for your workspace."
-              : `Join your team on VS PartnerHub${invitation.data ? ` as ${invitation.data.name}` : ""}.`}
+              : "Your team has invited you to join VS PartnerHub. Create your account to get started."}
         </p>
         {done ? (
           <div className="success-panel">
             <CheckCircle2 size={34} />
-            <h3>
+            <h2>
               {mode === "forgot"
                 ? "Check your inbox"
                 : "Your password is updated"}
-            </h3>
+            </h2>
             <p>
               {mode === "forgot"
-                ? "If this address is registered, a reset link has been sent. It expires in 30 minutes."
-                : "Sign in with your new password to continue."}
+                ? "If this address has an active account, a reset email has been requested. The link works once and expires in 30 minutes. Check your spam folder too."
+                : "Your previous sessions have been signed out. Sign in with your new password to continue."}
             </p>
             <Link className="button button-primary" to="/login">
               Return to sign in
             </Link>
+            {mode === "forgot" && (
+              <button
+                className="text-button space-top"
+                onClick={() => {
+                  setDone(false);
+                  setError(null);
+                }}
+              >
+                Use a different email
+              </button>
+            )}
           </div>
+        ) : mode !== "forgot" && (!token || link.error) ? (
+          <div className="auth-link-error">
+            <FormError
+              error={
+                link.error ||
+                new Error(
+                  "This link is incomplete. Open the full link from your email.",
+                )
+              }
+            />
+            {mode === "reset" ? (
+              <Link className="button button-primary" to="/forgot-password">
+                Request a new reset link
+              </Link>
+            ) : (
+              <p>
+                Ask your organization administrator to send a new invitation.
+              </p>
+            )}
+          </div>
+        ) : mode !== "forgot" && link.isPending ? (
+          <p role="status">Checking your secure link…</p>
         ) : (
           <form className="form-stack" onSubmit={submit}>
-            <FormError error={error || invitation.error} />
+            <FormError error={error} />
             {mode === "forgot" ? (
-              <Field label="Work email" required>
+              <Field label="Work email" required hint={emailHint}>
                 <Input
                   name="email"
                   type="email"
                   autoComplete="email"
+                  placeholder="you@company.com"
                   required
                 />
               </Field>
             ) : (
               <>
                 {mode === "invite" && (
-                  <Field label="Your name" required>
-                    <Input
-                      name="name"
-                      defaultValue={invitation.data?.name}
-                      required
-                      minLength={2}
-                    />
-                  </Field>
+                  <>
+                    <Field label="Invited email">
+                      <Input
+                        type="email"
+                        value={invitation.data.email}
+                        readOnly
+                        autoComplete="username"
+                      />
+                    </Field>
+                    <Field label="Your name" required>
+                      <Input
+                        name="name"
+                        defaultValue={invitation.data.name}
+                        minLength={2}
+                        maxLength={150}
+                        autoComplete="name"
+                        required
+                      />
+                    </Field>
+                  </>
                 )}
-                <Field
+                <PasswordField
                   label="New password"
+                  name="password"
+                  newPassword
                   required
-                  hint="At least 12 characters, including uppercase, lowercase and a number."
-                >
-                  <Input
-                    name="password"
-                    type="password"
-                    minLength={12}
-                    maxLength={128}
-                    autoComplete="new-password"
-                    required
-                  />
-                </Field>
+                />
+                <PasswordField
+                  label="Confirm new password"
+                  name="confirm_password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  required
+                />
+                {mode === "invite" && (
+                  <p className="auth-agreement">
+                    By creating your account, you agree to the{" "}
+                    <Link to="/terms">Terms</Link> and{" "}
+                    <Link to="/privacy">Privacy Policy</Link>.
+                  </p>
+                )}
               </>
             )}
-            <Button
-              busy={busy}
-              disabled={mode === "invite" && !invitation.data}
-              type="submit"
-            >
+            <Button busy={busy} type="submit">
               {mode === "forgot"
                 ? "Send reset link"
                 : mode === "reset"
@@ -745,6 +576,10 @@ export function Recovery({ mode }: { mode: "forgot" | "reset" | "invite" }) {
             </Button>
           </form>
         )}
+        <p className="auth-bottom-link">
+          Need help accessing your account?{" "}
+          <Link to="/contact">Contact VS support</Link>
+        </p>
       </div>
     </AuthFrame>
   );

@@ -18,6 +18,8 @@ const env = {
   APP_URL: "http://127.0.0.1:5183",
   SESSION_SECRET: "isolated-browser-test-secret-never-for-production",
   SMTP_HOST: "",
+  RESEND_API_KEY: "",
+  GEMINI_API_KEY: "",
 };
 const children = [
   spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {

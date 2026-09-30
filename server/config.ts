@@ -17,7 +17,7 @@ if (production && !appUrl.startsWith("https://"))
   throw new Error("APP_URL must use HTTPS in production.");
 export const config = {
   production,
-  demo: !production && process.env.DEMO_MODE !== "false",
+  demo: !production && process.env.DEMO_MODE === "true",
   port: Number(process.env.PORT || 4000),
   appUrl,
   sessionSecret,
@@ -34,7 +34,7 @@ export const config = {
     secure: process.env.SMTP_SECURE === "true",
     user: process.env.SMTP_USER,
     password: process.env.SMTP_PASSWORD,
-    from: process.env.MAIL_FROM || "VS PartnerHub <partners@localhost>",
+    from: process.env.MAIL_FROM || "",
   },
 };
 export const INTERNAL_ORG_ID = "00000000-0000-4000-8000-000000000001";

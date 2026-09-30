@@ -214,14 +214,26 @@ dashboardRouter.get("/lookups", async (req, res) => {
     .select("id", "legal_name", "type", "city")
     .orderBy("legal_name")
     .limit(1000);
-  const catalog = can(req.user, "catalog")
-    ? (
-        await scopeRecords(
-          db("records").where({ kind: "catalog", status: "active" }),
-          req.user,
-        ).limit(100)
-      ).map(serializeRecord)
-    : [];
+  const catalog =
+    can(req.user, "catalog") || can(req.user, "discovery")
+      ? (
+          await (
+            can(req.user, "discovery")
+              ? db("records")
+                  .where({ kind: "catalog", status: "active" })
+                  .whereIn(
+                    "owner_org_id",
+                    db("organizations")
+                      .where({ status: "active" })
+                      .select("id"),
+                  )
+              : scopeRecords(
+                  db("records").where({ kind: "catalog", status: "active" }),
+                  req.user,
+                )
+          ).limit(100)
+        ).map(serializeRecord)
+      : [];
   res.json({ parents, partners, catalog });
 });
 dashboardRouter.get("/search", async (req, res) => {

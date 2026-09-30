@@ -3,6 +3,31 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./lib/auth";
 import { EmptyState, Loading, ToastProvider } from "./components/ui";
 const Layout = lazy(() => import("./components/Layout"));
+const Assistant = lazy(() => import("./pages/Assistant"));
+const Integrations = lazy(() => import("./pages/Integrations"));
+const MasterData = lazy(() => import("./pages/MasterData"));
+const Approvals = lazy(() => import("./pages/Approvals"));
+const ResourcePools = lazy(() =>
+  import("./components/PartnerOperations").then((m) => ({
+    default: m.ResourcePools,
+  })),
+);
+const PartnerNetwork = lazy(() =>
+  import("./pages/PublicRoutes").then((m) => ({ default: m.PartnerNetwork })),
+);
+const PublicPartner = lazy(() =>
+  import("./pages/PublicRoutes").then((m) => ({ default: m.PublicPartner })),
+);
+const Contact = lazy(() =>
+  import("./pages/PublicRoutes").then((m) => ({ default: m.Contact })),
+);
+const Setup = lazy(() =>
+  import("./pages/PublicRoutes").then((m) => ({ default: m.Setup })),
+);
+const Inquiries = lazy(() =>
+  import("./pages/PublicRoutes").then((m) => ({ default: m.Inquiries })),
+);
+const Insights = lazy(() => import("./pages/Insights"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Records = lazy(() => import("./pages/Records"));
 const RecordDetail = lazy(() =>
@@ -86,6 +111,10 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/partners" element={<PartnerNetwork />} />
+                <Route path="/partners/:id" element={<PublicPartner />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/setup" element={<Setup />} />
                 <Route path="/register" element={<Onboarding />} />
                 <Route path="/verify" element={<VerifyEmail />} />
                 <Route
@@ -104,6 +133,13 @@ export default function App() {
                 <Route path="/terms" element={<Legal type="terms" />} />
                 <Route path="/app" element={<Layout />}>
                   <Route index element={<Dashboard />} />
+                  <Route path="ai" element={<Assistant />} />
+                  <Route path="integrations" element={<Integrations />} />
+                  <Route path="master-data" element={<MasterData />} />
+                  <Route path="approvals" element={<Approvals />} />
+                  <Route path="resources" element={<ResourcePools />} />
+                  <Route path="inquiries" element={<Inquiries />} />
+                  <Route path="insights" element={<Insights />} />
                   <Route path="reports" element={<Dashboard reports />} />
                   <Route path="organizations" element={<Organizations />} />
                   <Route

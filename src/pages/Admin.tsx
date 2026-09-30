@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import AccountSessions from "../components/AccountSessions";
 import { Link } from "react-router-dom";
 import {
   Bell,
@@ -967,6 +968,7 @@ export function Settings() {
                 </div>
               </form>
               <MfaSettings enabled={preferences.data?.mfa || false} />
+              <AccountSessions />
             </div>
           )}
           {tab === "notifications" && (

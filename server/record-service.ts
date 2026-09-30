@@ -13,7 +13,9 @@ import { INTERNAL_ORG_ID } from "./config.js";
 import { assert } from "./errors.js";
 import { assertActive, can } from "./security.js";
 import { audit, notifyOrganizations } from "./events.js";
+import { startApproval } from "./approvals.js";
 import { calculate, amountMinor } from "./money.js";
+import { webAddressSchema } from "../shared/urls.js";
 import { date, optionalDate, type RecordInput } from "./validation.js";
 import {
   moduleDefinitions,
@@ -28,12 +30,7 @@ const text = (n = 3000) => z.string().trim().max(n);
 const opt = text().default("");
 const required = text().min(1);
 const nonnegative = z.coerce.number().min(0).max(100000000);
-const url = z
-  .union([
-    z.url().refine((v) => /^https?:\/\//i.test(v), "Use an HTTP or HTTPS URL."),
-    z.literal(""),
-  ])
-  .default("");
+const url = webAddressSchema.default("");
 const common = {
   description: text(10000).default(""),
   category: text(150).default(""),
@@ -53,6 +50,8 @@ const payloadSchemas: Record<Module, z.ZodType<any>> = {
       quantity: nonnegative.default(1),
       skills: opt,
       experience: opt,
+      technology: opt,
+      delivery_requirements: opt,
       positions: z.coerce.number().int().min(1).max(10000).default(1),
       employment_type: text(100).default("Permanent"),
       criteria: opt,
@@ -506,6 +505,7 @@ export async function getItems(
     .orderBy("position");
   return rows.map((r: any) => ({
     id: r.id,
+    catalog_item_id: r.catalog_item_id || null,
     name: r.name,
     specification: r.specification,
     quantity: Number(r.quantity),
@@ -522,6 +522,7 @@ async function saveItems(k: Database, id: string, items: LineItem[]) {
       items.map((i, position) => ({
         id: randomUUID(),
         record_id: id,
+        catalog_item_id: i.catalog_item_id || null,
         name: i.name,
         specification: i.specification || "",
         quantity: i.quantity,
@@ -629,6 +630,7 @@ export async function saveRecord(
   kind: Module,
   input: RecordInput,
   existingId?: string,
+  transaction?: Database,
 ) {
   if (kind !== "tickets") assertActive(user);
   assert(
@@ -661,7 +663,7 @@ export async function saveRecord(
       422,
       "Delivery cannot be required before the response deadline.",
     );
-  return db.transaction(async (k) => {
+  const work = async (k: Database) => {
     const existing = existingId
       ? await accessibleRecord(existingId, user, k)
       : null;
@@ -671,6 +673,9 @@ export async function saveRecord(
         403,
         "This record can no longer be edited.",
       );
+      await k("approval_requests")
+        .where({ record_id: existing.id, status: "pending" })
+        .update({ status: "cancelled", updated_at: now() });
       assert(
         input.version === existing.version,
         409,
@@ -1069,6 +1074,45 @@ export async function saveRecord(
     }
     if (["rfqs", "quotations"].includes(kind))
       assert(items.length > 0, 422, "Add at least one line item.");
+    if (["requirements", "rfqs", "quotations", "contracts"].includes(kind)) {
+      const previousItems = existing ? await getItems(existing.id, k) : [];
+      const parentItems = parent ? await getItems(parent.id, k) : [];
+      for (const item of items) {
+        if (
+          !item.catalog_item_id ||
+          [...previousItems, ...parentItems].some(
+            (i) => i.catalog_item_id === item.catalog_item_id,
+          )
+        )
+          continue;
+        const catalog = await k("records")
+          .join("organizations", "organizations.id", "records.owner_org_id")
+          .where({
+            "records.id": item.catalog_item_id,
+            "records.kind": "catalog",
+            "records.status": "active",
+            "organizations.status": "active",
+          })
+          .select("records.*")
+          .first();
+        assert(
+          catalog && (catalog.owner_org_id === self || can(user, "discovery")),
+          422,
+          "Choose an active catalog item available to your organization.",
+        );
+        assert(
+          catalog.currency === input.currency,
+          422,
+          "Use catalog items in the transaction currency.",
+        );
+        const catalogPayload = parseJson(catalog.payload);
+        assert(
+          item.quantity >= Number(catalogPayload.moq || 1),
+          422,
+          `The minimum order quantity for ${catalog.title} is ${catalogPayload.moq || 1}.`,
+        );
+      }
+    }
     if (!["orders", "invoices", "payments"].includes(kind)) {
       if (["rfqs", "quotations", "contracts", "requirements"].includes(kind))
         total = calculate(items, payload.delivery_charges || 0).total;
@@ -1155,6 +1199,7 @@ export async function saveRecord(
     }
     await saveItems(k, id, items);
     const saved = serializeRecord(await k("records").where({ id }).first());
+    await startApproval(k, saved);
     await audit(
       k,
       user,
@@ -1179,5 +1224,6 @@ export async function saveRecord(
             : [],
       );
     return recordDetail(id, user, k);
-  });
+  };
+  return transaction ? work(transaction) : db.transaction(work);
 }

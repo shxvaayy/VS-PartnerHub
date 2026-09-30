@@ -2,17 +2,17 @@
 
 ## Routine operations
 
-| Task                    | Procedure                                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Health                  | Probe `/api/health`; HTTP 200 means the API can query its database                                            |
-| Company approval        | Verification center → inspect documents → approve required current versions → approve company                 |
-| Clarification           | Add an actionable note; partner updates the profile/documents and resubmits                                   |
-| Document renewal        | Use Renew on an existing document; the replacement is a new reviewable version                                |
-| Contract renewal        | Add a new end date and amendment note; the contract returns to review                                         |
-| User access             | Invite through People & access; suspend compromised accounts and review their audit history                   |
-| Email                   | Super Admin → Settings → Email delivery; inspect failure counts and retry after fixing provider configuration |
-| Expiry/retention worker | Runs at startup/hourly; run `npm run maintenance` or the compiled CLI for an explicit maintenance pass        |
-| Release                 | Back up, run checks, build, apply migrations, restart and verify health/core flows                            |
+| Task                    | Procedure                                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Health                  | Probe `/api/health`; HTTP 200 means the API can query its database                                                |
+| Company approval        | Verification center → inspect documents → approve required current versions → approve company                     |
+| Clarification           | Add an actionable note; partner updates the profile/documents and resubmits                                       |
+| Document renewal        | Use Renew on an existing document; the replacement is a new reviewable version                                    |
+| Contract renewal        | Add a new end date and amendment note; the contract returns to review                                             |
+| User access             | Invite through People & access; suspend compromised accounts and review their audit history                       |
+| Email                   | Super Admin → Integrations → Email delivery; inspect failure counts and retry after fixing provider configuration |
+| Expiry/retention worker | Runs at startup/hourly; run `npm run maintenance` or the compiled CLI for an explicit maintenance pass            |
+| Release                 | Back up, run checks, build, apply migrations, restart and verify health/core flows                                |
 
 The development server uses Vite and a watched API. `npm start` serves the compiled production frontend and API together. Migrations run at startup and are serialized by Knex's migration lock. Destructive rollback is unsupported; deploy a compatible fix or restore a verified backup into a clean environment.
 
@@ -76,3 +76,11 @@ Audit retention defaults to a seven-year minimum policy. Logs are not automatica
 Suspend an affected user/organization, preserve the relevant audit range and application/database logs, and investigate using restricted access. Fix the root cause, reset affected passwords and restore access through an authorized administrator. Review provider credentials and rotate any exposed secrets. Avoid exporting unnecessary candidate/KYC data into tickets or public issues.
 
 Monitor health failures, 5xx responses, SMTP failures, disk space, backup results, database connection usage and document-expiry volume. Per-process rate limits and in-process workers require a single designated runtime until distributed infrastructure is added.
+
+## AI operations
+
+Keep the Google credential and `INTEGRATION_ENCRYPTION_KEY` in the deployment secret store. Monitor failed/cancelled requests, provider capacity and document-reader load. A capacity response does not imply a completed analysis; the user can retry and ordinary direct-data queries remain available. Do not rotate the encryption key without decrypting/re-encrypting stored provider settings under a controlled procedure.
+
+AI history is private to the creator; source access is rechecked on reads. Users can delete conversations and unreviewed extractions. Human-reviewed extraction evidence is retained with the compliance decision. Unchanged private analyses are reusable for 15 minutes; document reuse is bound to content hash/version and fresh validation. Candidate retention removes linked personal AI content. Review retention of other AI history and backups under the organization policy.
+
+Deployments with a proxy must allow the document extraction event stream to flush (`proxy_buffering off` for that endpoint) and permit the 90-second processing deadline. A browser disconnect cancels pending generation; no fabricated successful response is saved.

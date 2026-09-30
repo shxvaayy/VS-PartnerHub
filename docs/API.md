@@ -1,6 +1,6 @@
 # API reference
 
-Base path: `/api`. JSON requests use `Content-Type: application/json`; document upload uses multipart form data. The browser and API share an origin. There is no public API-key or bearer-token authentication surface.
+Base path: `/api`. JSON requests use `Content-Type: application/json`; document upload uses multipart form data. The browser and API share an origin. Browser operations use session cookies and CSRF. Scoped, read-only ERP bearer tokens are restricted to `/api/integration`; see [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Authentication and CSRF
 
@@ -120,6 +120,44 @@ Input monetary values are major currency units. Returned `amount_minor`/`outstan
 | POST        | `/admin/email-status/:id/retry` | Queue a failed email again                              |
 
 All routes enforce server-side role and tenant scope. Administrative settings/roles/users cannot grant an external organization internal VS privileges.
+
+## VS AI
+
+AI routes require an active organization, current session and AI permission. Module permissions further restrict every selected record, document and task. Responses contain private conversation messages with readable `content`, authorized `sources` and task-specific `structured` evidence. `structured.actions` provides named navigation controls; raw routes are not rendered in prose.
+
+| Method       | Path                         | Purpose                                                                                                |
+| ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| GET          | `/ai/status`                 | Connection availability and permitted task flags; no provider name or usage counter                    |
+| POST         | `/ai/chat`                   | `{ message, conversationId?, recordIds?, documentId? }`; current scoped lookups and contextual answers |
+| POST         | `/ai/draft-requirement`      | `{ brief }`; editable draft, missing information and suggestions, without saving a business record     |
+| POST         | `/ai/analyze-quotations`     | `{ rfqId, question? }`; buyer-only comparison with server-calculated commercials                       |
+| POST         | `/ai/discover`               | `{ brief, criteria? }`; authorized profile search and supported matches                                |
+| POST         | `/ai/analyze-alerts`         | `{ question? }`; evidence-based operational explanation, without taking action                         |
+| POST         | `/ai/extract-document`       | `{ documentId }`; authorized PDF/image extraction, identity fields and validation                      |
+| GET          | `/ai/documents/:id`          | Authorized metadata for a selected document                                                            |
+| GET          | `/ai/conversations`          | The creator's conversations                                                                            |
+| GET / DELETE | `/ai/conversations/:id`      | Read with fresh source checks, or delete private history and saved analysis                            |
+| GET          | `/ai/extractions`            | The creator's extraction history                                                                       |
+| GET / DELETE | `/ai/extractions/:id`        | Read extraction/review evidence, or delete an unreviewed extraction                                    |
+| GET          | `/documents/:id/extractions` | Verification team's extraction/review history                                                          |
+
+Extraction returns JSON by default. With `Accept: text/event-stream`, the POST returns `progress` events carrying `stage` (`uploaded`, `reading`, `extracting`, `validating`, `ready`), followed by `result` or `error`. Reading events can also carry `pagesRead` and `totalPages`. These are measured processing stages; `ready` means ready for human review, not approved. The browser abort signal cancels outstanding work. File limits are 10 MB and 500 PDF pages. `result.preparation` records page counts, analysis coverage and whether the retained transcript is full, excerpted or an OCR reading. Source access and current document status are checked again when saved results are opened.
+
+The verification endpoint accepts an optional `extraction` object with `extractionId`, all eight `fields` and `sourceConfirmed: true`, alongside the permitted `status` and `note`. Corrections are persisted separately from the original extraction and bound to its source SHA-256. A foreign extraction, changed source or unauthorized reviewer is rejected.
+
+## Additional enterprise operations
+
+| Surface                                                                    | Behavior                                                                              |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `/auth/correct-email`, `/auth/resend-login`                                | Password-confirmed correction of an unverified email and controlled login-code resend |
+| `/auth/sessions`, `/auth/sessions/:id`, `/auth/sessions/revoke-others`     | List, revoke one or revoke other authenticated sessions                               |
+| `/imports/:kind/template`, `/imports/:kind/preview`, `/imports/:id/commit` | Catalog/requirement/candidate templates, row validation, atomic idempotent commit     |
+| `/approvals/queue`, `/approvals/records/:id`, `/approvals/policies`        | Scoped approval evidence and configurable sequential review policies                  |
+| `/signatures/contracts/:id`, `/signatures/:id/otp`, `/signatures/:id/sign` | Contract consent envelopes, emailed code and authorized signing                       |
+| `/signatures/:id/certificate`, `/signatures/:id/evidence`                  | PDF and JSON evidence bound to signed contract/document hashes                        |
+| `/insights`, `/insights/performance`                                       | Scoped date/statistical signals and recorded partner performance                      |
+| `/integrations/providers`, `/integrations/email`, `/integrations/gemini`   | Administrator-only encrypted provider settings and connection tests                   |
+| `/public/partners`, `/public/contact`, `/public/setup`                     | Opt-in public profiles, persisted enquiry and restricted first-admin bootstrap        |
 
 ## Errors and concurrency
 

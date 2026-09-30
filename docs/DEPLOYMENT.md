@@ -6,20 +6,22 @@ Use a supported Node.js release at or above 22.21, PostgreSQL, persistent privat
 
 Create `.env` from `.env.example`, then set:
 
-| Variable                                  | Production value                                                                    |
-| ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| `NODE_ENV`                                | `production`                                                                        |
-| `DEMO_MODE`                               | `false` (production also disables it unconditionally)                               |
-| `APP_URL`                                 | The exact public HTTPS origin, for example `https://partners.company.com`           |
-| `SESSION_SECRET`                          | At least 32 cryptographically random characters; `openssl rand -hex 32` is suitable |
-| `DATABASE_URL`                            | PostgreSQL connection URI for a dedicated application database/user                 |
-| `DATABASE_SSL`                            | `true` for a database requiring certificate-verified TLS                            |
-| `UPLOAD_DIR`                              | Persistent private directory, outside the public web root                           |
-| `HOST`                                    | `127.0.0.1` behind a host proxy, or `0.0.0.0` inside Docker                         |
-| `PORT`                                    | `4000` by default                                                                   |
-| `TRUST_PROXY`                             | `1` only behind one trusted proxy that overwrites forwarded headers; otherwise `0`  |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`   | Email provider settings, commonly port 587 with STARTTLS or 465 with `true`         |
-| `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Provider credentials and an authorized sender                                       |
+| Variable                                  | Production value                                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                | `production`                                                                                          |
+| `DEMO_MODE`                               | `false` (production also disables it unconditionally)                                                 |
+| `APP_URL`                                 | The exact public HTTPS origin, for example `https://partners.company.com`                             |
+| `SESSION_SECRET`                          | At least 32 cryptographically random characters; `openssl rand -hex 32` is suitable                   |
+| `INTEGRATION_ENCRYPTION_KEY`              | Independent 32-byte encryption secret for saved provider credentials; retain it securely for recovery |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`          | Authorized Google project key and available model, default `gemini-3.5-flash-lite`                    |
+| `DATABASE_URL`                            | PostgreSQL connection URI for a dedicated application database/user                                   |
+| `DATABASE_SSL`                            | `true` for a database requiring certificate-verified TLS                                              |
+| `UPLOAD_DIR`                              | Persistent private directory, outside the public web root                                             |
+| `HOST`                                    | `127.0.0.1` behind a host proxy, or `0.0.0.0` inside Docker                                           |
+| `PORT`                                    | `4000` by default                                                                                     |
+| `TRUST_PROXY`                             | `1` only behind one trusted proxy that overwrites forwarded headers; otherwise `0`                    |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`   | Email provider settings, commonly port 587 with STARTTLS or 465 with `true`                           |
+| `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Provider credentials and an authorized sender                                                         |
 
 Keep credentials in a deployment secret store or a restricted `.env`, never in the repository. `DATABASE_SSL=true` verifies the database certificate; use `NODE_EXTRA_CA_CERTS` for a private CA when necessary. Do not disable certificate validation.
 
@@ -58,7 +60,7 @@ Set the production environment before these commands. If deploying a pruned prod
 
 ## HTTPS proxy
 
-Terminate TLS at your load balancer or reverse proxy, forward requests to `127.0.0.1:4000`, preserve `Host`, and overwrite `X-Forwarded-Proto`/`X-Forwarded-For`. Use at least an 11 MB request body limit for a 10 MB file plus multipart overhead. WebSocket configuration is unnecessary for the production frontend.
+Terminate TLS at your load balancer or reverse proxy, forward requests to `127.0.0.1:4000`, preserve `Host`, and overwrite `X-Forwarded-Proto`/`X-Forwarded-For`. Use at least an 11 MB request body limit for a 10 MB file plus multipart overhead. WebSocket configuration is unnecessary for the production frontend. Document extraction uses server-sent events over POST; disable proxy response buffering for `/api/ai/extract-document` and allow at least a 95-second read timeout so actual progress and terminal errors reach the browser.
 
 `APP_URL` must match the browser origin; otherwise mutation requests are rejected by CSRF protection. The production session cookie uses `Secure`, so authentication must be reviewed through HTTPS. HTTP access to the API can be used for health probes only.
 

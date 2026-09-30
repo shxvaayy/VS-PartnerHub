@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -25,6 +25,8 @@ const env = {
   HOST: "127.0.0.1",
   PORT: "4105",
   SMTP_HOST: "",
+  RESEND_API_KEY: "",
+  GEMINI_API_KEY: "",
 };
 let child;
 let output = "";
@@ -204,6 +206,43 @@ try {
   console.log(
     "Production smoke passed: configuration guards, compiled assets, headers, secure cookies, demo suppression, persistent restart and restorable SQLite backup.",
   );
+  await mkdir("artifacts/local-verification", { recursive: true });
+  await writeFile(
+    "artifacts/local-verification/production-report.json",
+    JSON.stringify(
+      {
+        testedAt: new Date().toISOString(),
+        isolatedFixtures: true,
+        passed: true,
+        checks: [
+          "Configuration guards",
+          "Compiled assets",
+          "Security headers",
+          "Secure session cookies",
+          "Production demo suppression",
+          "Persistent restart",
+          "Restored SQLite backup and authenticated record access",
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+} catch (error) {
+  await mkdir("artifacts/local-verification", { recursive: true });
+  await writeFile(
+    "artifacts/local-verification/production-report.json",
+    JSON.stringify(
+      {
+        testedAt: new Date().toISOString(),
+        passed: false,
+        error: String(error),
+      },
+      null,
+      2,
+    ),
+  );
+  throw error;
 } finally {
   await stop();
   await rm(directory, { recursive: true, force: true });

@@ -1,4 +1,16 @@
 @charset "UTF-8";
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 :root {
   font-family:
     "Inter Variable",
@@ -2437,7 +2449,7 @@ select {
   border-radius: 10px;
   box-shadow: 0 8px 25px #18352015;
   font-size: 12px;
-  color: #69814f;
+  color: #526b38;
   animation: arrive 0.2s;
   pointer-events: auto;
 }
@@ -2456,7 +2468,7 @@ select {
 }
 .toast-error {
   border-color: #efddc9;
-  color: #b48d66;
+  color: #83572f;
 }
 .toast-error > svg {
   color: #bda481;
@@ -4948,7 +4960,7 @@ select {
   font-size: 28px !important;
   letter-spacing: 16px;
   text-align: center;
-  color: #8bab70 !important;
+  color: #365e43 !important;
   min-height: 65px !important;
   font-weight: 400;
 }

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { db, migrate, now } from "./db.js";
-import { config } from "./config.js";
+import { config, INTERNAL_ORG_ID } from "./config.js";
 import { ensureInternalOrganization, seed } from "./seed.js";
 import { hashPassword } from "./security.js";
 import { email, password } from "./validation.js";
@@ -28,6 +28,7 @@ try {
       email: address,
       password_hash: await hashPassword(pass),
       role: "super_admin",
+      organization_id: INTERNAL_ORG_ID,
       email_verified: true,
       active: true,
       created_at: now(),

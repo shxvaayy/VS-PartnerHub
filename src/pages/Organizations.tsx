@@ -55,6 +55,7 @@ import {
   type OrganizationType,
 } from "../../shared/domain";
 import Documents from "./Documents";
+import { ContactsPanel } from "../components/PartnerOperations";
 export default function Organizations({
   discovery = false,
   verification = false,
@@ -72,8 +73,10 @@ export default function Organizations({
     [location, setLocation] = useState(""),
     [industry, setIndustry] = useState(""),
     [certification, setCertification] = useState("");
+  const [advanced, setAdvanced] = useState<Record<string, string>>({});
+  const masterData = useApi<any>("/master-data");
   const result = useApi<any>(
-    `/organizations?${queryString({ type, status, q: query, page, location, category: industry, certification, discovery })}`,
+    `/organizations?${queryString({ type, status, q: query, page, location, category: industry, certification, discovery, ...advanced })}`,
   );
   const update = (key: string, value: string) => {
     const p = new URLSearchParams(params);
@@ -217,7 +220,10 @@ export default function Organizations({
               }}
             >
               <option value="">All industries</option>
-              {categories.map((c) => (
+              {(
+                masterData.data?.industry?.map((c: any) => c.label) ||
+                categories
+              ).map((c: string) => (
                 <option key={c}>{c}</option>
               ))}
             </select>
@@ -232,13 +238,19 @@ export default function Organizations({
             />
             <Input
               aria-label="Certification filter"
-              placeholder="Certification / technology"
+              list="discovery-certifications"
+              placeholder="Certification"
               value={certification}
               onChange={(e) => {
                 setCertification(e.target.value);
                 update("page", "1");
               }}
             />
+            <datalist id="discovery-certifications">
+              {masterData.data?.certification?.map((c: any) => (
+                <option key={c.id} value={c.label} />
+              ))}
+            </datalist>
             {!discovery && !verification && (
               <select
                 className="compact-select"
@@ -280,6 +292,30 @@ export default function Organizations({
             </div>
           </div>
         </div>
+        <details className="discovery-advanced">
+          <summary>Technology, products and business identifiers</summary>
+          <div className="form-grid">
+            {[
+              ["technology", "Technology"],
+              ["product", "Products"],
+              ["service", "Services"],
+              ["naics", "NAICS"],
+              ["sic", "SIC"],
+              ["business_type", "Business type"],
+            ].map(([key, title]) => (
+              <Field key={key} label={title}>
+                <Input
+                  value={advanced[key] || ""}
+                  onChange={(e) => {
+                    setAdvanced((v) => ({ ...v, [key]: e.target.value }));
+                    update("page", "1");
+                  }}
+                  maxLength={150}
+                />
+              </Field>
+            ))}
+          </div>
+        </details>
         {result.isPending ? (
           <Loading />
         ) : result.error ? (
@@ -473,11 +509,19 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
       <div className="company-hero">
         <div className="company-hero-pattern" />
         <div className="company-hero-body">
-          <Avatar
-            name={org.legal_name}
-            size="lg"
-            color={org.details.logo_color}
-          />
+          {org.logo_url ? (
+            <img
+              className="company-logo"
+              src={org.logo_url}
+              alt={`${org.legal_name} logo`}
+            />
+          ) : (
+            <Avatar
+              name={org.legal_name}
+              size="lg"
+              color={org.details.logo_color}
+            />
+          )}
           <div>
             <div className="company-title">
               <h1>{org.legal_name}</h1>
@@ -497,6 +541,33 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
             </div>
           </div>
           <div className="company-hero-actions">
+            {canEdit && (
+              <label className="button button-secondary logo-upload">
+                Upload logo
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="sr-only"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const form = new FormData();
+                    form.append("file", file);
+                    try {
+                      await api(`/organizations/${id}/logo`, {
+                        method: "POST",
+                        body: form,
+                      });
+                      await client.invalidateQueries();
+                      toast("Company logo updated.");
+                    } catch (err) {
+                      toast((err as Error).message, "error");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
             {canEdit && (
               <Button variant="secondary" onClick={() => setEdit(true)}>
                 Edit profile
@@ -575,6 +646,10 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
               ["capabilities", "Capabilities"],
               ["catalog", "Products & services"],
               ...(canDocuments ? [["documents", "Documents & KYC"]] : []),
+              ...((mine || user!.internal) &&
+              user!.permissions.contacts?.includes("view")
+                ? [["contacts", "Authorized contacts"]]
+                : []),
             ].map(([key, text]) => (
               <button
                 key={key}
@@ -721,8 +796,62 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
           {tab === "documents" && canDocuments && (
             <Documents organizationId={id} embedded />
           )}
+          {tab === "contacts" && (
+            <ContactsPanel
+              organizationId={id}
+              canEdit={Boolean(
+                canEdit && user!.permissions.contacts?.includes("edit"),
+              )}
+            />
+          )}
         </div>
         <aside className="profile-sidebar">
+          {mine && canEdit && (
+            <div className="card marketplace-settings">
+              <h3>Public partner directory</h3>
+              <p>
+                Let new businesses discover your company name, capabilities,
+                location, website and logo. Private documents and authorized
+                contacts stay within your workspace.
+              </p>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(org.marketplace_visible)}
+                  disabled={
+                    busy ||
+                    (!org.marketplace_visible && org.status !== "active")
+                  }
+                  onChange={async (e) => {
+                    setBusy(true);
+                    try {
+                      await api(`/organizations/${id}/marketplace`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ visible: e.target.checked }),
+                      });
+                      await client.invalidateQueries();
+                      toast("Public visibility updated.");
+                    } catch (err) {
+                      toast((err as Error).message, "error");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                />
+                Publish my verified business profile
+              </label>
+              {org.status !== "active" && (
+                <small>
+                  Available after VS verifies and approves your company.
+                </small>
+              )}
+              {org.marketplace_visible && (
+                <Link className="text-link" to={`/partners/${id}`}>
+                  View public profile <ArrowUpRight size={15} />
+                </Link>
+              )}
+            </div>
+          )}
           {mine && (
             <div className="card profile-progress">
               <div className="inline-heading">
@@ -907,6 +1036,7 @@ function EditProfile({
     client = useQueryClient(),
     toast = useToast(),
     { refresh } = useAuth();
+  const masterData = useApi<any>("/master-data");
   const rootFields = [
     "legal_name",
     "trade_name",
@@ -998,6 +1128,16 @@ function EditProfile({
         <div className="modal-body">
           <FormError error={error} />
           <div className="form-grid">
+            <datalist id="profile-master-industries">
+              {masterData.data?.industry?.map((v: any) => (
+                <option key={v.id} value={v.label} />
+              ))}
+            </datalist>
+            <datalist id="profile-master-certifications">
+              {masterData.data?.certification?.map((v: any) => (
+                <option key={v.id} value={v.label} />
+              ))}
+            </datalist>
             {rootFields.map((key) => (
               <Field
                 label={label(key)}
@@ -1006,6 +1146,9 @@ function EditProfile({
               >
                 <Input
                   name={key}
+                  list={
+                    key === "industry" ? "profile-master-industries" : undefined
+                  }
                   type={
                     key === "website"
                       ? "url"
@@ -1049,9 +1192,18 @@ function EditProfile({
                 ) : (
                   <Input
                     name={key}
+                    list={
+                      key === "certifications"
+                        ? "profile-master-certifications"
+                        : undefined
+                    }
                     value={data.details[key] ?? ""}
                     type={
-                      ["experience", "moq"].includes(key) ? "number" : "text"
+                      ["experience", "moq"].includes(key)
+                        ? "number"
+                        : key === "company_email"
+                          ? "email"
+                          : "text"
                     }
                     onChange={(e) =>
                       setData((d: any) => ({

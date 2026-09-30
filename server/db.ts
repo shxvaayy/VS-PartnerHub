@@ -3,6 +3,12 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { defaultPermissions, roleLabels } from "../shared/domain.js";
+import { enterpriseSchema } from "./enterprise-schema.js";
+import { operationsSchema } from "./operations-schema.js";
+import { securitySchema } from "./security-schema.js";
+import { authSchema } from "./auth-schema.js";
+import { intelligenceSchema } from "./intelligence-schema.js";
+import { aiEfficiencySchema } from "./ai-efficiency-schema.js";
 
 if (!config.databaseUrl)
   mkdirSync(path.dirname(config.sqlitePath), { recursive: true });
@@ -362,10 +368,31 @@ export async function migrate() {
       getMigrations: async () => [
         "001_foundation",
         "002_commercial_constraints",
+        "003_enterprise_operations",
+        "004_complete_operations",
+        "005_security_delivery_evidence",
+        "006_auth_sessions_and_attempts",
+        "007_document_ai_review",
+        "008_ai_efficiency",
       ],
       getMigrationName: (migration: string) => migration,
       getMigration: async (name: string) => ({
-        up: name === "001_foundation" ? initialSchema : commercialConstraints,
+        up:
+          name === "001_foundation"
+            ? initialSchema
+            : name === "002_commercial_constraints"
+              ? commercialConstraints
+              : name === "003_enterprise_operations"
+                ? enterpriseSchema
+                : name === "004_complete_operations"
+                  ? operationsSchema
+                  : name === "005_security_delivery_evidence"
+                    ? securitySchema
+                    : name === "006_auth_sessions_and_attempts"
+                      ? authSchema
+                      : name === "007_document_ai_review"
+                        ? intelligenceSchema
+                        : aiEfficiencySchema,
         down: async () => {
           throw new Error(
             "Destructive rollback is intentionally unsupported. Restore a verified backup.",

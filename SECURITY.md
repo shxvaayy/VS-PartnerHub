@@ -1,29 +1,91 @@
-# Security model
+# Production deployment
 
-## Implemented controls
+## Configure a clean environment
 
-- Passwords are individually salted and hashed with Node's scrypt. Authentication tokens use SHA-256 or secret-keyed HMAC; plaintext session tokens are never stored in the database.
-- Sessions expire after 12 hours and use an HttpOnly, SameSite=Lax cookie. Production cookies are Secure. Password changes/resets revoke sessions and pending login/reset tokens. Changing email sign-in verification revokes other sessions and pending sign-in challenges.
-- Email verification and optional sign-in codes expire after 10 minutes and permit at most five attempts. Invitation links are single-use and expire after 72 hours. Account recovery returns a generic response to avoid disclosing registration status.
-- Mutations require the session's `X-CSRF-Token`; cross-origin mutations are rejected. Authentication and API routes are rate-limited outside the isolated test environment.
-- Authorization checks run on every API action and document download. Roles, organization type and record relationships all apply. An external administrator cannot create VS internal users or approve their own organization.
-- Workflow decisions, financial calculations, related-record eligibility and optimistic versions are checked server-side. Concurrent payment reservations and unique commercial references protect financial integrity.
-- Uploaded documents are limited to 10 MB and validated as PDF, PNG or JPEG using MIME, extension and file signature checks. They use random private filenames, attachment-only downloads and no public file URLs. Role and organization checks also apply to supporting documents.
-- Helmet sets a same-origin CSP, frame restrictions, no-sniff headers and production HSTS. Passwords, session secrets and authentication email contents are not returned through administration screens.
-- Audit history records important mutations, downloads, exports and workflow decisions. Audit rows have no application edit/delete endpoint.
+Use a supported Node.js release at or above 22.21, PostgreSQL, persistent private file storage and an HTTPS reverse proxy. Start with an empty production database and upload directory. Local demo data is fictional and should stay in local development.
 
-## Deployment responsibilities
+Create `.env` from `.env.example`, then set:
 
-This code does not encrypt disks or databases, operate TLS certificates, scan PDFs for malware, implement SAML/OIDC, provide phishing-resistant WebAuthn, perform regulatory verification or make audit storage tamper-proof against a database administrator. Configure encrypted infrastructure, restricted database credentials, private backups and log access in the deployment environment. Attach a malware scanner or upload quarantine if company policy requires it.
+| Variable                                  | Production value                                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                | `production`                                                                                          |
+| `DEMO_MODE`                               | `false` (production also disables it unconditionally)                                                 |
+| `APP_URL`                                 | The exact public HTTPS origin, for example `https://partners.company.com`                             |
+| `SESSION_SECRET`                          | At least 32 cryptographically random characters; `openssl rand -hex 32` is suitable                   |
+| `INTEGRATION_ENCRYPTION_KEY`              | Independent 32-byte encryption secret for saved provider credentials; retain it securely for recovery |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`          | Authorized Google project key and available model, default `gemini-3.5-flash-lite`                    |
+| `DATABASE_URL`                            | PostgreSQL connection URI for a dedicated application database/user                                   |
+| `DATABASE_SSL`                            | `true` for a database requiring certificate-verified TLS                                              |
+| `UPLOAD_DIR`                              | Persistent private directory, outside the public web root                                             |
+| `HOST`                                    | `127.0.0.1` behind a host proxy, or `0.0.0.0` inside Docker                                           |
+| `PORT`                                    | `4000` by default                                                                                     |
+| `TRUST_PROXY`                             | `1` only behind one trusted proxy that overwrites forwarded headers; otherwise `0`                    |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`   | Email provider settings, commonly port 587 with STARTTLS or 465 with `true`                           |
+| `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Provider credentials and an authorized sender                                                         |
 
-Email sign-in codes improve password-only login but are not phishing-resistant MFA. An enterprise identity provider/WebAuthn integration can be added for stronger authentication policy. Do not enable an account's email sign-in verification until its verified mailbox can receive production mail.
+Keep credentials in a deployment secret store or a restricted `.env`, never in the repository. `DATABASE_SSL=true` verifies the database certificate; use `NODE_EXTRA_CA_CERTS` for a private CA when necessary. Do not disable certificate validation.
 
-The supplied local `.example` accounts are development fixtures. Production disables fixture creation and code exposure; never point a production server at a previously seeded demo database.
+## Docker and PostgreSQL
 
-## Data and retention
+`compose.yaml` provisions PostgreSQL 18 and a non-root application container. Database and uploads use named volumes. The application port is bound to host loopback for use with a TLS proxy. The database is not published to the host network.
 
-Collect only hiring data authorized by the candidate and required for the assigned role. Consent and retention metadata are server-managed. Closed/joined candidates and linked interview data are anonymized after the configured period; active candidates remain intact. Restrict free-text notes to information needed for the workflow.
+For Compose, add `POSTGRES_PASSWORD` to `.env` using a long random hexadecimal value. This avoids reserved URI characters when constructing the database connection string. Set `APP_URL`, `SESSION_SECRET`, SMTP settings and proxy settings as above.
 
-Audit retention is a minimum policy setting. Archive audit history under the company's approved procedure; automatic deletion is intentionally absent. Database and document backups must follow the same privacy/retention policy and should be encrypted and access controlled.
+```sh
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100 app
+```
 
-See [OPERATIONS.md](docs/OPERATIONS.md) for recovery and incident handling. Report suspected vulnerabilities privately to the repository owner or the organization's designated security team; do not include personal data, credentials or session tokens in a public issue.
+Bootstrap the first administrator once. The following shell variables must be set securely in the deployment session; the `-e NAME` syntax forwards their values without embedding a password in command history:
+
+```sh
+docker compose exec -e ADMIN_EMAIL -e ADMIN_PASSWORD -e ADMIN_NAME app node build/server/cli.js admin
+```
+
+Use a unique password of at least 12 characters including uppercase, lowercase and a number. The bootstrap command refuses to overwrite an existing account. Remove `ADMIN_PASSWORD` from the deployment environment after use. Sign in at the HTTPS URL, enable email sign-in verification and invite the internal VS teams with their proper roles.
+
+## Direct Node deployment
+
+```sh
+npm ci
+npm run check
+npm run build
+npm run db:migrate
+npm run admin:create
+npm start
+```
+
+Set the production environment before these commands. If deploying a pruned production installation, run the compiled CLI as `node build/server/cli.js migrate` or `node build/server/cli.js admin`; the source CLI requires the development `tsx` dependency. Run the server under a process manager/system service and a dedicated non-root account. Grant that account access only to its database and private upload directory.
+
+## HTTPS proxy
+
+Terminate TLS at your load balancer or reverse proxy, forward requests to `127.0.0.1:4000`, preserve `Host`, and overwrite `X-Forwarded-Proto`/`X-Forwarded-For`. Use at least an 11 MB request body limit for a 10 MB file plus multipart overhead. WebSocket configuration is unnecessary for the production frontend. Document extraction uses server-sent events over POST; disable proxy response buffering for `/api/ai/extract-document` and allow at least a 95-second read timeout so actual progress and terminal errors reach the browser.
+
+`APP_URL` must match the browser origin; otherwise mutation requests are rejected by CSRF protection. The production session cookie uses `Secure`, so authentication must be reviewed through HTTPS. HTTP access to the API can be used for health probes only.
+
+Example Nginx location inside an existing TLS-enabled server block:
+
+```nginx
+client_max_body_size 11m;
+location / {
+    proxy_pass http://127.0.0.1:4000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+}
+```
+
+## Email and scheduled work
+
+Email verification, resets and optional sign-in codes need working SMTP. The local demo retains messages in a local outbox and shows test codes/links; production does not expose these values. Verify the provider's sender/domain configuration, SPF/DKIM and delivery logs with an approved test mailbox before inviting employees.
+
+The application sends queued mail every 15 seconds, uses row claims and retries temporary failures up to five attempts. Expiry/retention maintenance runs at startup and hourly. Failed messages can be retried by a Super Admin in Settings → Email delivery. SMTP delivery is at-least-once: the same message may be delivered again after an interrupted send.
+
+Run a single application instance with the supplied configuration. For horizontal scaling, introduce a designated maintenance worker, shared upload storage and distributed rate limits first.
+
+## Rollout validation
+
+Check `/api/health`, login/logout, email verification/reset/sign-in codes, an upload/download, the configured company review process, one complete procurement transaction and recruitment workflow. Review the organization/role configuration and the Terms/Privacy content for company policy. Test a backup restoration as described in [OPERATIONS.md](OPERATIONS.md).
+
+Security headers, cookie configuration, production demo suppression, persistent restart and SQLite backup are covered by `npm run test:production`. TLS termination, cloud permissions, Docker runtime configuration, real email delivery, database HA and off-site recovery must also be verified in the chosen hosting environment.

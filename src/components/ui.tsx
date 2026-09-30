@@ -1,13 +1,19 @@
 import {
   createContext,
+  Children,
+  cloneElement,
+  isValidElement,
   useContext,
   useEffect,
   useRef,
+  useId,
   useState,
   type ReactNode,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type ChangeEvent,
 } from "react";
+import { emailError } from "../../shared/auth";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
@@ -26,6 +32,8 @@ import {
 import { ApiError } from "../lib/api";
 import { initials } from "../lib/format";
 import { label } from "../../shared/domain";
+import { brandPaths } from "../../shared/brand";
+import { normalizeWebAddress, webAddressError } from "../../shared/urls";
 export function Logo({
   light = false,
   compact = false,
@@ -34,13 +42,25 @@ export function Logo({
   compact?: boolean;
 }) {
   return (
-    <span className={`brand ${light ? "brand-light" : ""}`}>
-      <svg className="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-        <rect width="40" height="40" rx="11" fill="currentColor" />
-        <path
-          d="M9 12h7l5 15h-7zm13 0h9l-7 15h-7z"
-          fill={light ? "#173e32" : "#d2efa1"}
+    <span
+      className={`brand ${light ? "brand-light" : ""}`}
+      role={compact ? "img" : undefined}
+      aria-label={compact ? "VS PartnerHub" : undefined}
+    >
+      <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="18" fill="currentColor" />
+        <rect
+          x="1"
+          y="1"
+          width="62"
+          height="62"
+          rx="17"
+          fill="none"
+          stroke={light ? "#173e32" : "#d2efa1"}
+          strokeOpacity=".22"
         />
+        <path d={brandPaths.v} fill={light ? "#173e32" : "#d2efa1"} />
+        <path d={brandPaths.s} fill={light ? "#2d5945" : "#f7faf3"} />
       </svg>
       {!compact && (
         <span>
@@ -63,9 +83,10 @@ export function Button({
 }) {
   return (
     <button
+      {...props}
       className={`button button-${variant} ${className}`}
       disabled={busy || props.disabled}
-      {...props}
+      aria-busy={busy || undefined}
     >
       {busy && <LoaderCircle size={16} className="spin" />}
       {children}
@@ -267,19 +288,109 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const generatedId = useId();
+  let controlId = "";
+  const hintId = `${generatedId}-hint`;
+  // An explicit label keeps hints, select options and password-toggle buttons
+  // out of the control's accessible name. Nested checkbox labels remain intact.
+  const labelControl = (nodes: ReactNode): ReactNode =>
+    Children.map(nodes, (child) => {
+      if (!isValidElement<Record<string, any>>(child) || child.type === "label")
+        return child;
+      if (
+        !controlId &&
+        (child.type === Input ||
+          ["input", "select", "textarea"].includes(child.type as string))
+      ) {
+        controlId = child.props.id || generatedId;
+        return cloneElement(child, {
+          id: controlId,
+          "aria-describedby":
+            [child.props["aria-describedby"], hint ? hintId : undefined]
+              .filter(Boolean)
+              .join(" ") || undefined,
+        });
+      }
+      return child.props.children
+        ? cloneElement(child, { children: labelControl(child.props.children) })
+        : child;
+    });
+  const content = labelControl(children);
   return (
-    <label className={`field ${className}`}>
-      <span className="field-label">
-        {text}
-        {required && <span className="required"> *</span>}
-      </span>
-      {children}
-      {hint && <small>{hint}</small>}
-    </label>
+    <div
+      className={`field ${className}`}
+      role={controlId ? undefined : "group"}
+      aria-labelledby={controlId ? undefined : generatedId}
+    >
+      <div className="field-heading">
+        {controlId ? (
+          <label className="field-label" htmlFor={controlId}>
+            {text}
+          </label>
+        ) : (
+          <span className="field-label" id={generatedId}>
+            {text}
+          </span>
+        )}
+        {required && (
+          <span className="required" aria-hidden="true">
+            {" "}
+            *
+          </span>
+        )}
+      </div>
+      {content}
+      {hint && <small id={hintId}>{hint}</small>}
+    </div>
   );
 }
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className="input" {...props} />;
+  const { onChange, onInvalid, onBlur, ...rest } = props;
+  const validate = (input: HTMLInputElement) => {
+    if (props.type === "email")
+      input.setCustomValidity(
+        input.value.trim() || props.required ? emailError(input.value) : "",
+      );
+    if (props.type === "url")
+      input.setCustomValidity(webAddressError(input.value));
+  };
+  return (
+    <input
+      className="input"
+      {...(["email", "url"].includes(props.type || "")
+        ? {
+            autoCapitalize: "none",
+            spellCheck: false,
+            maxLength: props.type === "email" ? 254 : 2000,
+          }
+        : {})}
+      {...rest}
+      type={props.type === "url" ? "text" : props.type}
+      inputMode={props.type === "url" ? "url" : props.inputMode}
+      onChange={(event) => {
+        validate(event.currentTarget);
+        onChange?.(event);
+      }}
+      onInvalid={(event) => {
+        validate(event.currentTarget);
+        onInvalid?.(event);
+      }}
+      onBlur={(event) => {
+        if (
+          props.type === "url" &&
+          !webAddressError(event.currentTarget.value)
+        ) {
+          const normalized = normalizeWebAddress(event.currentTarget.value);
+          if (normalized !== event.currentTarget.value) {
+            event.currentTarget.value = normalized;
+            onChange?.(event as unknown as ChangeEvent<HTMLInputElement>);
+          }
+        }
+        validate(event.currentTarget);
+        onBlur?.(event);
+      }}
+    />
+  );
 }
 export function SearchInput({
   value,

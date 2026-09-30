@@ -30,15 +30,14 @@ export async function ensureInternalOrganization() {
       legal_name: "Vijay Software Solutions Pvt. Ltd.",
       trade_name: "VS Solutions",
       industry: "Information Technology",
-      city: "Hyderabad",
+      city: config.demo ? "Hyderabad" : "",
       country: "India",
       website: "",
       status: "active",
-      contact_name: "VS Team",
-      contact_email: config.production
-        ? process.env.ADMIN_EMAIL || "admin@example.com"
-        : "admin@vs.example",
-      contact_phone: "+91 4000000000",
+      contact_name: process.env.ADMIN_NAME || "VS Team",
+      contact_email:
+        process.env.ADMIN_EMAIL || (config.demo ? "admin@vs.example" : ""),
+      contact_phone: "",
       details: JSON.stringify({
         description: "The VS PartnerHub platform organization.",
       }),
@@ -71,8 +70,10 @@ export function samplePdf(company: string, title: string) {
   );
 }
 export async function seed() {
-  if (config.production)
-    throw new Error("Demo data cannot be seeded in production.");
+  if (config.production || !config.demo)
+    throw new Error(
+      "Fictional data requires explicit DEMO_MODE=true in a separate development database.",
+    );
   if (await db("settings").where({ key: "demo_seeded" }).first()) return;
   await ensureInternalOrganization();
   await mkdir(config.uploadDir, { recursive: true });

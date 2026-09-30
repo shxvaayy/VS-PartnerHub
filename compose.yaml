@@ -37,7 +37,16 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-VS PartnerHub <partners@example.com>}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_DAILY_USER_LIMIT: ${GEMINI_DAILY_USER_LIMIT:-100}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      WEBHOOK_ALLOWED_PRIVATE_HOSTS: ${WEBHOOK_ALLOWED_PRIVATE_HOSTS:-}
     volumes:
       - private_uploads:/app/uploads
     security_opt:

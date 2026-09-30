@@ -33,18 +33,23 @@ jobs:
       - run: npm run format:check
       - run: npm run check
       - name: SQLite integration tests
-        run: npm test
+        run: npm test -- --reporter=json --outputFile=artifacts/local-verification/backend-sqlite.json
       - name: PostgreSQL integration tests
-        run: npm test
+        run: npm test -- --reporter=json --outputFile=artifacts/local-verification/backend-postgres.json
         env:
           TEST_DATABASE_URL: postgresql://partnerhub:test-only-password@127.0.0.1:5432/partnerhub_test
       - run: npx playwright install --with-deps chromium
+      - run: npm run test:files
       - run: npm run test:e2e
       - run: npm run test:production
+      - name: Real-mode authentication through SMTP
+        run: npm run test:auth-smtp
       - run: npm audit --audit-level=high
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: browser-verification
-          path: test-results/
+          path: |
+            test-results/
+            artifacts/local-verification/
           retention-days: 7

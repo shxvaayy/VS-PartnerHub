@@ -59,6 +59,11 @@ export const formFields: Record<Module, FieldDef[]> = {
     number("budget", "Indicative budget"),
     number("quantity", "Quantity", 1),
     text("criteria", "Eligible partner criteria"),
+    text("technology", "Technology requirements"),
+    field("delivery_requirements", "Delivery requirements", {
+      type: "textarea",
+      full: true,
+    }),
     { ...text("skills", "Required skills"), hiring: true },
     { ...text("experience", "Experience range"), hiring: true },
     { ...number("positions", "Open positions", 1), hiring: true },

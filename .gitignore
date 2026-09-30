@@ -15,3 +15,9 @@ artifacts/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Signing credentials belong outside source control.
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

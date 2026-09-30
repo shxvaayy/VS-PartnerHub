@@ -55,13 +55,22 @@ try {
   console.log(
     `Running the full suite against isolated PostgreSQL on port ${port}.`,
   );
-  const result = spawnSync("npm", ["test"], {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      TEST_DATABASE_URL: `postgresql://partnerhub@127.0.0.1:${port}/partnerhub_test`,
+  const result = spawnSync(
+    "npm",
+    [
+      "test",
+      "--",
+      "--reporter=json",
+      "--outputFile=artifacts/local-verification/backend-postgres.json",
+    ],
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        TEST_DATABASE_URL: `postgresql://partnerhub@127.0.0.1:${port}/partnerhub_test`,
+      },
     },
-  });
+  );
   process.exitCode = result.status ?? 1;
 } catch (error) {
   console.error(error.message);

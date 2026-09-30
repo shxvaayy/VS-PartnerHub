@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   CalendarClock,
   Check,
@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   UploadCloud,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,9 @@ import {
 } from "../components/ui";
 import { formatDate } from "../lib/format";
 import { documentCategories } from "../../shared/domain";
+import DocumentExtractionReview, {
+  type ExtractionReviewInput,
+} from "../components/DocumentExtractionReview";
 export default function Documents({
   organizationId,
   embedded = false,
@@ -41,6 +45,10 @@ export default function Documents({
   organizationId?: string;
   embedded?: boolean;
 }) {
+  const [params] = useSearchParams(),
+    opened = useRef("");
+  const focusedId = !embedded ? params.get("document") || "" : "";
+  const focused = useApi<any>(`/documents/${focusedId}`, Boolean(focusedId));
   const { user } = useAuth(),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState(""),
@@ -51,13 +59,56 @@ export default function Documents({
   const result = useApi<any>(
       `/documents?${queryString({ q: query, status, page, organization_id: organizationId })}`,
     ),
-    settings = useApi<any>("/admin/settings");
+    settings = useApi<any>("/admin/settings"),
+    selectedOrganization = useApi<any>(
+      `/organizations/${organizationId}`,
+      Boolean(organizationId),
+    );
+  const policyType =
+    selectedOrganization.data?.type ||
+    (!user?.internal ? user?.organization?.type : undefined);
+  const policies = useApi<any[]>(
+    `/master-data/document-policies?type=${policyType}`,
+    Boolean(policyType),
+  );
   const canReview =
-      user!.internal && user!.permissions.verification?.includes("review"),
+      user!.internal &&
+      user!.permissions.verification?.includes("review") &&
+      user!.permissions.documents?.includes("review"),
     canUpload = user!.permissions.documents?.includes("create");
   const documents = result.data?.items || [];
+  useEffect(() => {
+    if (canReview && focused.data && opened.current !== focusedId) {
+      opened.current = focusedId;
+      setReview(focused.data);
+    }
+  }, [canReview, focused.data, focusedId]);
   const body = (
     <>
+      {focused.error && <FormError error={focused.error} />}
+      {focused.data && (
+        <div className="document-focus">
+          <FileText size={22} />
+          <div>
+            <strong>{focused.data.name}</strong>
+            <p>
+              {focused.data.category} · Version {focused.data.version} ·{" "}
+              <Badge status={focused.data.status} />
+            </p>
+          </div>
+          <a
+            className="button button-secondary"
+            href={`/api/documents/${focused.data.id}/download`}
+          >
+            Download source
+          </a>
+          {canReview && (
+            <Button onClick={() => setReview(focused.data)}>
+              Review document
+            </Button>
+          )}
+        </div>
+      )}
       <div className="table-filters">
         <SearchInput
           value={query}
@@ -171,6 +222,15 @@ export default function Documents({
                   <td className="subtle">{formatDate(d.created_at)}</td>
                   <td>
                     <div className="table-actions">
+                      {user!.permissions.ai?.includes("create") && (
+                        <Link
+                          className="icon-button"
+                          to={`/app/ai?mode=document&document=${d.id}`}
+                          aria-label={`Extract ${d.name} with VS AI`}
+                        >
+                          <Sparkles size={16} />
+                        </Link>
+                      )}
                       <a
                         className="icon-button"
                         href={`/api/documents/${d.id}/download`}
@@ -237,11 +297,15 @@ export default function Documents({
               <div>
                 <h3>One verified business identity</h3>
                 <p>
-                  Required for company verification:{" "}
-                  {(
-                    settings.data?.requiredDocuments || ["PAN", "Incorporation"]
-                  ).join(", ")}
-                  .
+                  {policyType
+                    ? `Required for company verification: ${
+                        policies.data
+                          ?.filter((p) => p.required)
+                          .map((p) => p.category)
+                          .join(", ") ||
+                        "See the organization’s compliance policy"
+                      }.`
+                    : "Required documents follow the compliance policy for each organization type."}
                 </p>
               </div>
             </div>
@@ -252,11 +316,8 @@ export default function Documents({
               <div>
                 <h3>Stay one step ahead</h3>
                 <p>
-                  Expiry reminders at{" "}
-                  {(settings.data?.documentExpiryDays || [90, 60, 30]).join(
-                    ", ",
-                  )}{" "}
-                  days help you keep your documents current.
+                  Expiry reminders follow each document category’s policy.
+                  Review the expiry date when you upload or renew a document.
                 </p>
               </div>
             </div>
@@ -285,18 +346,24 @@ export function DocumentUpload({
   organizationId,
   previous,
   onClose,
+  onUploaded,
+  submitLabel,
+  initialCategory,
 }: {
   recordId?: string;
   organizationId?: string;
   previous?: any;
   onClose: () => void;
+  onUploaded?: (document: any) => void;
+  submitLabel?: string;
+  initialCategory?: string;
 }) {
   const { user } = useAuth(),
     toast = useToast(),
     client = useQueryClient(),
     [file, setFile] = useState<File | null>(null),
     [category, setCategory] = useState(
-      previous?.category || (recordId ? "Other" : "PAN"),
+      previous?.category || initialCategory || (recordId ? "Other" : "PAN"),
     ),
     [org, setOrg] = useState(
       previous?.organization_id ||
@@ -311,6 +378,18 @@ export function DocumentUpload({
     "/organizations?limit=100",
     user!.internal && !recordId,
   );
+  const masterData = useApi<any>("/master-data");
+  const selectedOrganizationType =
+    organizations.data?.items.find((o: any) => o.id === org)?.type ||
+    user!.organization?.type ||
+    "vendor";
+  const policies = useApi<any[]>(
+    `/master-data/document-policies?type=${selectedOrganizationType}`,
+    !recordId,
+  );
+  const requiresExpiry =
+    !recordId &&
+    policies.data?.find((p) => p.category === category)?.expiry_required;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) {
@@ -327,7 +406,7 @@ export function DocumentUpload({
     if (expiry) data.set("expires_at", expiry);
     if (previous) data.set("previous_id", previous.id);
     try {
-      await api("/documents", { method: "POST", body: data });
+      const document = await api("/documents", { method: "POST", body: data });
       await client.invalidateQueries();
       toast(
         previous
@@ -335,6 +414,7 @@ export function DocumentUpload({
           : "Document uploaded securely.",
       );
       onClose();
+      onUploaded?.(document);
     } catch (e) {
       setError(e);
     } finally {
@@ -349,7 +429,9 @@ export function DocumentUpload({
           ? `A new version of ${previous.name} will be created. The previous file stays in history.`
           : "PDF, PNG or JPEG · Up to 10 MB. Access is restricted to authorized users."
       }
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
     >
       <form onSubmit={submit}>
         <div className="modal-body form-stack">
@@ -381,18 +463,27 @@ export function DocumentUpload({
               onChange={(e) => setCategory(e.target.value)}
               disabled={Boolean(previous)}
             >
-              {documentCategories.map((c) => (
+              {(
+                masterData.data?.document?.map((c: any) => c.label) ||
+                documentCategories
+              ).map((c: string) => (
                 <option key={c}>{c}</option>
               ))}
             </select>
           </Field>
           <Field
             label="Expiry date"
-            hint="Leave blank for documents that do not expire."
+            hint={
+              requiresExpiry
+                ? "Required by your organization’s document policy."
+                : "Leave blank for documents that do not expire."
+            }
+            required={requiresExpiry}
           >
             <Input
               type="date"
               name="expires_at"
+              required={requiresExpiry}
               value={expiry}
               onChange={(e) => setExpiry(e.target.value)}
             />
@@ -413,21 +504,45 @@ export function DocumentUpload({
               accept="application/pdf,image/png,image/jpeg"
               onChange={(e) => {
                 const selected = e.target.files?.[0];
-                if (selected && selected.size > 10 * 1024 * 1024) {
-                  setError(new Error("Choose a file smaller than 10 MB."));
+                const invalid =
+                  selected &&
+                  (!selected.size
+                    ? "This file is empty. Choose a PDF, PNG or JPEG document."
+                    : selected.size > 10 * 1024 * 1024
+                      ? "Choose a file no larger than 10 MB."
+                      : !/\.(pdf|png|jpe?g)$/i.test(selected.name) ||
+                          (selected.type &&
+                            ![
+                              "application/pdf",
+                              "image/png",
+                              "image/jpeg",
+                            ].includes(selected.type))
+                        ? "Choose a PDF, PNG or JPEG document."
+                        : "");
+                if (invalid) {
+                  setError(new Error(invalid));
                   setFile(null);
-                } else setFile(selected || null);
+                  e.target.value = "";
+                } else {
+                  setError(undefined);
+                  setFile(selected || null);
+                }
               }}
             />
           </div>
         </div>
         <div className="modal-footer">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
             Cancel
           </Button>
           <Button busy={busy} type="submit">
             <UploadCloud size={16} />
-            Upload securely
+            {submitLabel || "Upload securely"}
           </Button>
         </div>
       </form>
@@ -445,6 +560,7 @@ function DocumentReview({
     [note, setNote] = useState(""),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false),
+    [extraction, setExtraction] = useState<ExtractionReviewInput>(),
     client = useQueryClient(),
     toast = useToast();
   return (
@@ -452,6 +568,7 @@ function DocumentReview({
       title="Review company document"
       description={`${doc.organization_name || ""} · ${doc.category} · Version ${doc.version}`}
       onClose={onClose}
+      wide
     >
       <form
         onSubmit={async (e) => {
@@ -461,7 +578,7 @@ function DocumentReview({
           try {
             await api(`/documents/${doc.id}/review`, {
               method: "POST",
-              body: JSON.stringify({ status, note }),
+              body: JSON.stringify({ status, note, extraction }),
             });
             await client.invalidateQueries();
             toast("Document review saved.");
@@ -486,6 +603,11 @@ function DocumentReview({
             </div>
             <Download size={18} />
           </a>
+          <DocumentExtractionReview
+            documentId={doc.id}
+            value={extraction}
+            onChange={setExtraction}
+          />
           <Field label="Decision">
             <select
               className="input"

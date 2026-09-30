@@ -10,10 +10,15 @@ import {
   type WorkRecord,
 } from "../shared/domain.js";
 import { calculate } from "../server/money.js";
+import { enterpriseCases } from "./enterprise.cases.js";
+import { authCases } from "./auth.cases.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "vs-partnerhub-test-"));
 process.env.NODE_ENV = "test";
 process.env.DEMO_MODE = "true";
+process.env.SMTP_HOST = "";
+process.env.RESEND_API_KEY = "";
+process.env.GEMINI_API_KEY = "";
 process.env.SQLITE_PATH = path.join(directory, "test.sqlite");
 process.env.UPLOAD_DIR = path.join(directory, "uploads");
 if (process.env.TEST_DATABASE_URL)
@@ -1325,4 +1330,36 @@ describe("administration, exports and security lifecycle", () => {
       0,
     );
   });
+});
+
+enterpriseCases({
+  get db() {
+    return db;
+  },
+  get app() {
+    return app;
+  },
+  clients,
+  post,
+  patch,
+  get,
+  input,
+  line,
+  org,
+  rid,
+  future,
+  login,
+  transition,
+  demoId: (key: string) => demoId(key),
+});
+
+authCases({
+  get db() {
+    return db;
+  },
+  get app() {
+    return app;
+  },
+  clients,
+  post,
 });
