@@ -104,7 +104,7 @@ try {
     $application = Join-Path $env:ProgramFiles 'Microsoft Power BI Desktop/bin/PBIDesktop.exe'
     $script:processName = 'PBIDesktop'
     $workbook = (Resolve-Path 'artifacts/desktop-bi/input/power-bi/VS PartnerHub.pbip').Path
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222'
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1'
   } else {
     $application = (Get-ChildItem (Join-Path $env:ProgramFiles 'Tableau') -Filter tabreader.exe -Recurse | Select-Object -First 1).FullName
     $script:processName = 'tabreader'
@@ -125,6 +125,7 @@ try {
     $controls = @(Read-Controls $window)
     Save-Controls 'latest-controls' $controls
     Capture-Screen 'latest-screen'
+    if ($controls.name -contains 'Issues were found') { throw 'Power BI Desktop rejected the report project. Inspect the retained error dialog.' }
     foreach ($label in @('Not now', 'Continue without signing in', 'Apply changes')) {
       $action = $controls | Where-Object { $_.name -eq $label -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
       if ($action) { Invoke-Control $action | Out-Null }
@@ -144,6 +145,22 @@ try {
   $checks.Add(@{ name = 'Workbook opened in the installed desktop application'; passed = $true })
   if ($report.visibleDashboardTitles.Count -ne 8) { throw 'All eight dashboard tabs were not available. Inspect the retained application screenshot and control tree.' }
   $checks.Add(@{ name = 'Eight dashboard tabs are exposed by the actual desktop application'; passed = $true })
+  if ($Platform -eq 'power-bi') {
+    # Refresh runs asynchronously. Model validation must inspect its loaded data,
+    # including all rows, numeric units and preserved blanks, before UI acceptance.
+    $modelDeadline = (Get-Date).AddSeconds(90)
+    $modelReady = $false
+    do {
+      try {
+        & ./scripts/verify-bi-desktop-model.ps1 -OutputDirectory $out
+        $modelReady = $true
+      } catch {
+        if ((Get-Date) -ge $modelDeadline) { throw }
+        Start-Sleep -Seconds 3
+      }
+    } until ($modelReady)
+    $checks.Add(@{ name = 'Desktop refreshed source rows, DAX values and display units match the offline fixture'; passed = $true })
+  }
   foreach ($title in $titles) {
     $control = $controls | Where-Object { $_.name -eq $title } | Select-Object -First 1
     if (-not (Invoke-Control $control)) { throw "Desktop tab selection is unavailable for $title." }
@@ -151,11 +168,15 @@ try {
     Capture-Screen ($title -replace '[^a-zA-Z0-9]+', '-')
     $controls = @(Read-Controls (Get-AppWindow))
     Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
+    if ($Platform -eq 'power-bi') {
+      $page = (Get-Content artifacts/desktop-bi/input/expected.json -Raw | ConvertFrom-Json).pages | Where-Object { $_.title -eq $title }
+      & node scripts/verify-bi-desktop-render.mjs $page.id
+      if ($LASTEXITCODE -ne 0) { throw "The actual Desktop visuals did not pass for $title." }
+    }
   }
   $checks.Add(@{ name = 'Every dashboard can be selected and has a retained desktop screenshot'; passed = $true })
-  # Screenshots and loaded data need separate review; opening a window alone is insufficient.
-  $report.desktopAcceptanceCompleted = $false
-  $report.remainingValidation = 'Review rendered visuals and verify refreshed values before claiming desktop acceptance.'
+  $report.desktopAcceptanceCompleted = $Platform -eq 'power-bi'
+  if ($Platform -ne 'power-bi') { $report.remainingValidation = 'Review rendered Tableau visuals and loaded values before claiming desktop acceptance.' }
 } catch {
   $checks.Add(@{ name = 'Desktop workbook verification'; passed = $false; error = $_.Exception.Message })
   $report.error = $_.Exception.Message
@@ -166,6 +187,7 @@ try {
   $report.completedAt = (Get-Date).ToUniversalTime().ToString('o')
   $report | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $out 'report.json') -Encoding UTF8
   if ($Platform -eq 'power-bi') {
+    & node scripts/verify-bi-desktop-render.mjs diagnostics
     $workspace = Join-Path $env:LOCALAPPDATA 'Microsoft/Power BI Desktop/AnalysisServicesWorkspaces'
     if (Test-Path $workspace) {
       Get-ChildItem $workspace -Filter '*.port.txt' -Recurse | ForEach-Object { @{ file = $_.Name; port = (Get-Content $_.FullName -Raw).Trim() } } | ConvertTo-Json | Set-Content (Join-Path $out 'analysis-services.json') -Encoding UTF8

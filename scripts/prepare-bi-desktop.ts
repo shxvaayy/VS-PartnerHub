@@ -26,12 +26,17 @@ await fs.writeFile(
       syntheticData: true,
       productionDataRead: false,
       externalPublication: false,
+      currency: report.currency,
       pages: report.views.map((view) => ({
         id: view.id,
         title: view.title,
+        trendLabel: view.trendLabel,
+        distributionLabel: view.distributionLabel,
         tables: view.tables.map((table) => ({
           name: `${view.id}_${table.id}`,
           rows: table.rows.length,
+          columns: table.columns,
+          records: table.rows,
         })),
         metrics: view.metrics,
       })),

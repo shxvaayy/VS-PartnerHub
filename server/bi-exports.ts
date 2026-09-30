@@ -18,6 +18,8 @@ const schemas = {
     "https://developer.microsoft.com/json-schemas/fabric/item/semanticModel/definitionProperties/1.0.0/schema.json",
   report:
     "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/3.0.0/schema.json",
+  reportVersion:
+    "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/versionMetadata/1.0.0/schema.json",
   pages:
     "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/pagesMetadata/1.0.0/schema.json",
   page: "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.0.0/schema.json",
@@ -483,6 +485,10 @@ export function powerBiFiles(report: AnalyticsReport, appUrl: string): Files {
       settings: { qnaEnabled: false },
     }),
     [`${modelDir}/model.bim`]: json(model(report, appUrl)),
+    [`${reportDir}/definition/version.json`]: json({
+      $schema: schemas.reportVersion,
+      version: "2.0.0",
+    }),
     [`${reportDir}/definition/report.json`]: json({
       $schema: schemas.report,
       themeCollection: {

@@ -49,6 +49,11 @@ describe("Native Power BI workspace exports", () => {
     const project = read(files, "VS PartnerHub.pbip");
     const reportPath = project.artifacts[0].report.path;
     const report = read(files, `${reportPath}/definition.pbir`);
+    // Desktop requires this file before it can load any PBIR report pages.
+    // Validating only the files that happen to exist misses an incomplete ZIP.
+    expect(read(files, `${reportPath}/definition/version.json`).version).toBe(
+      "2.0.0",
+    );
     const modelPath = path.posix.normalize(
       `${reportPath}/${report.datasetReference.byPath.path}`,
     );
