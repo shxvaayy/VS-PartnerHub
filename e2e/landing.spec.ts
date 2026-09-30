@@ -30,7 +30,7 @@ test("desktop navigation opens real product destinations and supports keyboard d
   page,
 }) => {
   await openHome(page);
-  for (const width of [1440, 1024, 834]) {
+  for (const width of [1440, 1200, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     const header = page.locator(".public-header");
     const platform = header.getByRole("button", {

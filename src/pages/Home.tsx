@@ -88,10 +88,14 @@ export function PublicHeader() {
           </Link>
           <button
             className="icon-button hub-menu"
+            tabIndex={0}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             aria-controls="public-mobile-navigation"
-            onClick={() => setOpen(!open)}
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true });
+              setOpen(!open);
+            }}
           >
             {open ? <X size={21} /> : <Menu size={21} />}
           </button>
@@ -112,7 +116,7 @@ function PublicMobileMenu({ onClose }: { onClose: () => void }) {
       dialog = ref.current;
     dialog?.showModal();
     document.body.style.overflow = "hidden";
-    const wide = window.matchMedia("(min-width: 801px)");
+    const wide = window.matchMedia("(min-width: 1024px)");
     const resize = () => {
       if (wide.matches) closeRef.current();
     };
