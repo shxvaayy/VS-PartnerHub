@@ -1,5 +1,23 @@
 # Production deployment
 
+## Vercel deployment
+
+The live application is **https://vs-partnerhub.vercel.app**. `vercel.json` deploys the React frontend and `api/index.ts` together, including direct navigation to login, password recovery and workspace routes. The API runs in Singapore with the connected Neon PostgreSQL database and a **private** Vercel Blob store. Local SQLite accounts and files are not copied to production.
+
+Production requires `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (migrations), `DATABASE_SSL=true`, `FILE_STORAGE=blob`, `BLOB_READ_WRITE_TOKEN`, `APP_URL`, `SESSION_SECRET`, `INTEGRATION_ENCRYPTION_KEY`, `CRON_SECRET` and `TRUST_PROXY=1`. Configure Gemini through `GEMINI_API_KEY` and `GEMINI_MODEL`. Sensitive values belong in Vercel environment settings; `.vercelignore` also excludes local secrets, databases, uploads and verification artifacts from CLI deployments.
+
+The production build runs database migrations before releasing the function. Cold starts do not seed data or migrate schemas. PostgreSQL stores users, password hashes, sessions, OTP/reset token hashes, organization profiles, workflows and audit records. Shared request limits and scheduled-job leases also use PostgreSQL, so they work across function instances.
+
+Document uploads use a short-lived, single-path token to upload up to 10 MB directly to private storage. The API then rechecks the user's permissions, file size and file signature, and saves a separate immutable document. Download, extraction and signature routes retain their existing authorization checks and stream/read the private file through the server. Staging objects are cleaned after their upload tokens expire.
+
+The function explicitly retains background email/webhook work with `waitUntil`. Security emails begin delivery during the authentication request. A daily authenticated Vercel cron handles expiry/retention work when the site is idle; active traffic also checks hourly maintenance and queued retries. The cron route requires the configured bearer secret. Node's permanent worker timers are used only for conventional Node/Docker hosting.
+
+For real verification and recovery emails, set `RESEND_API_KEY`, `MAIL_FROM` and optionally `MAIL_REPLY_TO`, or configure SMTP below. Use a company domain verified by the email provider; confirm SPF/DKIM and DMARC alignment, then test actual delivery to the intended inboxes. A working password login does not establish that external email delivery has been configured.
+
+Use `vercel deploy --prod --skip-domain` to validate a production build before promoting it. `vercel curl` can access a protected deployment for authorized checks. Promote a verified deployment with `vercel promote <deployment-url>`; pushes to the connected `main` branch also deploy. Bootstrap an administrator only once using the operator-controlled CLI and a real authorized email address. Never use local example credentials on the live site.
+
+`npm run test:cloud` exercises real private Blob uploads, authorization, tampering, replay and restart persistence with a disposable local account database. It reads Blob credentials from the ignored `.env.production.local` (or `CLOUD_ENV_FILE`), removes its cloud test objects and writes `artifacts/local-verification/cloud-storage-report.json`.
+
 ## Configure a clean environment
 
 Use a supported Node.js release at or above 22.21, PostgreSQL, persistent private file storage and an HTTPS reverse proxy. Start with an empty production database and upload directory. Local demo data is fictional and should stay in local development.

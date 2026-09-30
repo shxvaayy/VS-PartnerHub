@@ -1,16 +1,18 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
-import path from "node:path";
 import multer from "multer";
 import { z } from "zod";
 import { db, now } from "./db.js";
-import { config } from "./config.js";
 import { assert } from "./errors.js";
 import { authenticated, can, permit } from "./security.js";
 import { audit } from "./events.js";
 import { date, email, pagination, uuid } from "./validation.js";
 import type { SessionUser } from "../shared/domain.js";
+import {
+  deleteStoredFile,
+  sendStoredFile,
+  writeStoredFile,
+} from "./storage.js";
 
 export const partnerOperationsRouter = Router();
 partnerOperationsRouter.use(
@@ -182,11 +184,7 @@ partnerOperationsRouter.post(
     const key = `logo-${randomUUID()}.${png ? "png" : "jpg"}`,
       org = await db("organizations").where({ id }).first();
     assert(org, 404, "Organization not found.");
-    await mkdir(config.uploadDir, { recursive: true });
-    await writeFile(path.join(config.uploadDir, key), f.buffer, {
-      mode: 0o600,
-      flag: "wx",
-    });
+    await writeStoredFile(key, f.buffer, png ? "image/png" : "image/jpeg");
     try {
       await db.transaction(async (k) => {
         await k("organizations")
@@ -199,11 +197,10 @@ partnerOperationsRouter.post(
         await audit(k, req.user, "logo_updated", "organizations", org);
       });
     } catch (error) {
-      await unlink(path.join(config.uploadDir, key));
+      await deleteStoredFile(key).catch(() => {});
       throw error;
     }
-    if (org.logo_key)
-      await unlink(path.join(config.uploadDir, org.logo_key)).catch(() => {});
+    if (org.logo_key) await deleteStoredFile(org.logo_key).catch(() => {});
     res.json({ ok: true });
   },
 );
@@ -221,10 +218,8 @@ partnerOperationsRouter.get("/organizations/:id/logo", async (req, res) => {
     404,
     "Logo not found.",
   );
-  res
-    .type(org.logo_mime)
-    .set("Cache-Control", "private, no-store")
-    .sendFile(path.join(config.uploadDir, org.logo_key));
+  res.set("Cache-Control", "private, no-store");
+  await sendStoredFile(res, org.logo_key, org.logo_mime);
 });
 partnerOperationsRouter.patch(
   "/organizations/:id/marketplace",

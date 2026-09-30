@@ -1,8 +1,6 @@
 import { db, now, parseJson } from "./db.js";
 import { audit, notifyOrganizations } from "./events.js";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
-import { config } from "./config.js";
+import { deleteStoredFile } from "./storage.js";
 import { documentPolicies } from "./master-data.js";
 let running = false;
 export async function maintenance() {
@@ -167,11 +165,21 @@ export async function maintenance() {
         );
       });
       for (const file of files)
-        await unlink(path.join(config.uploadDir, file.storage_key)).catch(
-          () => {},
-        );
+        await deleteStoredFile(file.storage_key).catch(() => {});
     }
     await db("sessions").where("expires_at", "<", now()).delete();
+    // Staged uploads are private, untrusted files. Keep them until all write
+    // tokens have expired, then remove abandoned and completed staging objects.
+    const uploadCutoff = new Date(Date.now() - 5 * 60000).toISOString();
+    const uploads = await db("document_uploads")
+      .where("expires_at", "<", uploadCutoff)
+      .where("updated_at", "<", uploadCutoff)
+      .orderBy("expires_at")
+      .limit(100);
+    for (const upload of uploads) {
+      await deleteStoredFile(upload.storage_key);
+      await db("document_uploads").where({ id: upload.id }).delete();
+    }
     await db("auth_attempts").where("expires_at", "<", now()).delete();
     await db("auth_tokens").where("expires_at", "<", now()).delete();
     await db("import_batches")

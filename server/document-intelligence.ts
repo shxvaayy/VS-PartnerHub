@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { readStoredFile } from "./storage.js";
 import { z } from "zod";
 import {
   emptyIdentity,
@@ -12,7 +11,6 @@ import {
 } from "../shared/ai.js";
 import type { SessionUser } from "../shared/domain.js";
 import { now, parseJson, type Database } from "./db.js";
-import { config } from "./config.js";
 import { assert } from "./errors.js";
 import { uuid } from "./validation.js";
 import { audit } from "./events.js";
@@ -150,9 +148,7 @@ export async function recordExtractionReview(
     404,
     "This extraction does not belong to the document being reviewed.",
   );
-  const bytes = await readFile(
-    path.join(config.uploadDir, document.storage_key),
-  );
+  const bytes = await readStoredFile(document.storage_key);
   const digest = createHash("sha256").update(bytes).digest("hex");
   assert(
     digest === extraction.source_digest,

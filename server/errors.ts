@@ -17,6 +17,10 @@ export function assert(
   if (!condition) throw new HttpError(status, message);
 }
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (res.headersSent) {
+    _next(error);
+    return;
+  }
   if (error instanceof ZodError) {
     res.status(422).json({
       error: "Please check the highlighted information.",

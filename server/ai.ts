@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { readStoredFile } from "./storage.js";
 import { z } from "zod";
 import { db, now, parseJson } from "./db.js";
 import {
@@ -13,7 +12,6 @@ import {
   getUser,
 } from "./security.js";
 import { assert } from "./errors.js";
-import { config } from "./config.js";
 import {
   accessibleRecord,
   canCreate,
@@ -1343,9 +1341,7 @@ aiRouter.post(
     const doc = await aiDocument(input.documentId, req.user);
     progress("uploaded");
     progress("reading");
-    const content = await readFile(
-      path.join(config.uploadDir, doc.storage_key),
-    );
+    const content = await readStoredFile(doc.storage_key);
     assert(
       content.length <= documentLimits.bytes,
       413,

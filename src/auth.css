@@ -170,24 +170,6 @@
 .auth-form-wrap .text-button:disabled {
   cursor: wait;
 }
-.auth-motion-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: -4px auto 12px;
-  background: transparent;
-  border: 1px solid #638554;
-  color: #d1e5b6;
-  border-radius: 20px;
-  padding: 7px 11px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 10px;
-}
-.auth-motion-toggle:hover {
-  background: #416039;
-}
 .session-management {
   padding-top: 18px;
   margin-top: 14px;
@@ -265,14 +247,5 @@
     border-radius: 50%;
     background: #c5dc9e;
     box-shadow: 0 0 10px #c5dc9e99;
-  }
-  .auth-illustration[data-motion="paused"] *,
-  .auth-illustration[data-motion="paused"] *::after {
-    animation-play-state: paused;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .auth-motion-toggle {
-    display: none;
   }
 }

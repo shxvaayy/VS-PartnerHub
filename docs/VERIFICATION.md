@@ -5,8 +5,8 @@ Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLit
 | Check                                       | Result                                                                                                                   |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript, production build and formatting | Passed                                                                                                                   |
-| SQLite automated suite                      | 109 / 109 passed                                                                                                         |
-| PostgreSQL automated suite                  | 109 / 109 passed                                                                                                         |
+| SQLite automated suite                      | 113 / 113 passed                                                                                                         |
+| PostgreSQL automated suite                  | 113 / 113 passed                                                                                                         |
 | Browser acceptance                          | 18 / 18 passed; no retries or skipped tests                                                                              |
 | Live VS AI acceptance                       | 32 / 32 passed across all six capabilities                                                                               |
 | PDF and CSV acceptance                      | 7 / 7 passed                                                                                                             |
@@ -52,10 +52,10 @@ Follow [the local review guide](LOCAL_REVIEW.md). Generated JSON reports, QA fix
 
 Missing or failed evidence produces a nonzero exit and a report marked for review. The report command does not run the tests itself. The full accessibility command includes all 16 role dashboards; `node scripts/accessibility-audit.mjs --dashboards` runs just those dashboards.
 
-## Deployment verification still required
+## Live deployment and remaining external checks
 
 The real-mode authentication suite verifies registration, email OTP, sign-in verification, password recovery, token reuse rejection and session visibility through an authenticated **local SMTP receiver**. No external email was sent. Production SMTP sender configuration and delivery to intended external inboxes remain to be verified.
 
-The compiled production Node runtime and local SQLite backup recovery passed. Hosting/TLS, private storage, off-site recovery, monitoring and production provider capacity need deployment-specific verification. Docker execution and signed Android/iOS SDK builds were not tested on this machine. Provider-specific ERP, bank settlement, statutory verification, qualified signatures and BGV integrations need their selected services; a recorded reference is not proof of an external transaction.
+The compiled production Node runtime and local SQLite backup recovery passed. The Vercel API, direct SPA routes, real administrator login, persistent PostgreSQL sessions and private Blob storage have since been deployed. The database connection uses certificate-verified TLS 1.3. The separate cloud suite passed 14 checks with real uploads above 4.5 MB, private access, tampering/replay rejection and restart persistence; its disposable cloud files were removed. Off-site recovery, monitoring and production provider capacity still need their operational checks. Docker execution and signed Android/iOS SDK builds were not tested on this machine. Provider-specific ERP, bank settlement, statutory verification, qualified signatures and BGV integrations need their selected services; a recorded reference is not proof of an external transaction.
 
-Automated accessibility covers the tested states and does not replace a manual assistive-technology audit. AI output remains reviewable, and provider rate limits still apply. No production deployment was performed.
+Automated accessibility covers the tested states and does not replace a manual assistive-technology audit. AI output remains reviewable, and provider rate limits still apply. The live URL is https://vs-partnerhub.vercel.app. Live deployment evidence is kept separately under `artifacts/live-verification/`; the earlier local AI and SMTP results are not claims of external email delivery. See [DEPLOYMENT.md](DEPLOYMENT.md) for the deployed architecture.

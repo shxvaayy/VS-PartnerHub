@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import nodemailer from "nodemailer";
+import { waitUntil } from "@vercel/functions";
 import { db, now, parseJson, type Database } from "./db.js";
 import { config } from "./config.js";
 import type { SessionUser } from "../shared/domain.js";
@@ -243,22 +244,29 @@ export function deliverEmails(onlyId?: string): Promise<void> {
   else pendingAll = true;
   if (!deliveryTask)
     deliveryTask = (async () => {
+      const deadline = config.serverless ? Date.now() + 180000 : Infinity;
       try {
-        while (pendingAll || pendingIds.size) {
+        while ((pendingAll || pendingIds.size) && Date.now() < deadline) {
           const all = pendingAll,
             ids = [...pendingIds];
           pendingAll = false;
           pendingIds.clear();
-          if (all) await deliverEmailBatch();
-          else for (const id of ids) await deliverEmailBatch(id);
+          if (all) await deliverEmailBatch(undefined, deadline);
+          else for (const id of ids) await deliverEmailBatch(id, deadline);
         }
       } finally {
         deliveryTask = null;
       }
     })();
+  if (config.serverless)
+    waitUntil(
+      deliveryTask.catch(() => {
+        console.error("Email delivery requires a retry.");
+      }),
+    );
   return deliveryTask;
 }
-async function deliverEmailBatch(onlyId?: string) {
+async function deliverEmailBatch(onlyId?: string, deadline = Infinity) {
   const settings = await emailConfiguration();
   if (!emailConfigured(settings)) return;
   // Recover abandoned claims after a process restart. SMTP delivery is at-least-once.
@@ -289,6 +297,7 @@ async function deliverEmailBatch(onlyId?: string) {
   if (onlyId) query.where({ id: onlyId });
   const messages = await query;
   for (const m of messages) {
+    if (Date.now() >= deadline) break;
     const claimed = await db("email_outbox")
       .where({ id: m.id, status: "queued" })
       .where((q) => q.whereNull("expires_at").orWhere("expires_at", ">", now()))

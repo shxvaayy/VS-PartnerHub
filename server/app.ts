@@ -2,6 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import { DatabaseRateLimitStore } from "./rate-limits.js";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { config } from "./config.js";
@@ -27,6 +28,7 @@ import { approvalsRouter } from "./approvals.js";
 import { signaturesRouter } from "./signatures.js";
 import { publicRouter, inquiriesRouter } from "./public.js";
 import { insightsRouter } from "./insights.js";
+import { jobsRouter, serverlessBackground } from "./jobs.js";
 
 export function createApp() {
   const app = express();
@@ -41,7 +43,11 @@ export function createApp() {
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "blob:"],
           fontSrc: ["'self'"],
-          connectSrc: ["'self'"],
+          connectSrc: [
+            "'self'",
+            "https://blob.vercel-storage.com",
+            "https://*.blob.vercel-storage.com",
+          ],
           frameAncestors: ["'none'"],
           objectSrc: ["'none'"],
           upgradeInsecureRequests: config.production ? [] : null,
@@ -63,6 +69,7 @@ export function createApp() {
   app.use(
     "/api",
     rateLimit({
+      store: new DatabaseRateLimitStore("api"),
       windowMs: 60000,
       limit: 300,
       standardHeaders: "draft-8",
@@ -76,6 +83,8 @@ export function createApp() {
     express.raw({ type: "application/json", limit: "128kb" }),
     emailWebhook,
   );
+  app.use("/api/jobs", jobsRouter);
+  app.use("/api", serverlessBackground);
   app.use(
     express.json({ limit: "2mb" }),
     cookieParser(),

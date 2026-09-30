@@ -17,6 +17,57 @@ export async function api<T = any>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (
+    options.body instanceof FormData &&
+    /^\/documents\/?$/.test(path) &&
+    options.method?.toUpperCase() === "POST"
+  ) {
+    const file = options.body.get("file");
+    if (!(file instanceof File) || !file.size)
+      throw new ApiError("Choose a PDF, PNG or JPEG document.", 422);
+    const document = Object.fromEntries(
+      [...options.body.entries()].filter(([key]) => key !== "file"),
+    );
+    const ticket = await api<{
+      transport: "multipart" | "direct";
+      id?: string;
+      pathname?: string;
+      token?: string;
+    }>("/documents/uploads", {
+      method: "POST",
+      signal: options.signal,
+      body: JSON.stringify({
+        document,
+        file: {
+          name: file.name.slice(0, 200),
+          type: file.type,
+          size: file.size,
+        },
+      }),
+    });
+    if (ticket.transport === "direct") {
+      const { put } = await import("@vercel/blob/client");
+      try {
+        await put(ticket.pathname!, file, {
+          access: "private",
+          token: ticket.token!,
+          contentType: file.type,
+          abortSignal: options.signal || undefined,
+        });
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        throw new ApiError(
+          "The upload could not finish. Check your connection and try again.",
+          503,
+        );
+      }
+      return api<T>(`/documents/uploads/${ticket.id}/complete`, {
+        method: "POST",
+        signal: options.signal,
+        body: "{}",
+      });
+    }
+  }
   const headers = new Headers(options.headers);
   if (options.body && !(options.body instanceof FormData))
     headers.set("Content-Type", "application/json");

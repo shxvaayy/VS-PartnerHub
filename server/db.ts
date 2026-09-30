@@ -9,18 +9,35 @@ import { securitySchema } from "./security-schema.js";
 import { authSchema } from "./auth-schema.js";
 import { intelligenceSchema } from "./intelligence-schema.js";
 import { aiEfficiencySchema } from "./ai-efficiency-schema.js";
+import { cloudSchema } from "./cloud-schema.js";
+import { attachDatabasePool } from "@vercel/functions";
 
 if (!config.databaseUrl)
   mkdirSync(path.dirname(config.sqlitePath), { recursive: true });
+const connectionString = (() => {
+  if (!config.databaseUrl || !config.databaseSsl) return config.databaseUrl;
+  const url = new URL(config.databaseUrl);
+  // Explicitly verify the server identity even if a provider's generated URI
+  // contains the weaker or version-dependent sslmode=require setting.
+  url.searchParams.set("sslmode", "verify-full");
+  url.searchParams.delete("uselibpqcompat");
+  return url.toString();
+})();
 export const db = knex(
   config.databaseUrl
     ? {
         client: "pg",
         connection: {
-          connectionString: config.databaseUrl,
+          connectionString,
           ssl: config.databaseSsl ? { rejectUnauthorized: true } : undefined,
         },
-        pool: { min: 2, max: 10 },
+        pool: {
+          min: 0,
+          max: config.serverless ? 5 : 10,
+          idleTimeoutMillis: 5000,
+          reapIntervalMillis: 1000,
+          acquireTimeoutMillis: 20000,
+        },
       }
     : {
         client: "better-sqlite3",
@@ -41,6 +58,15 @@ export const db = knex(
         },
       },
 );
+if (config.serverless && config.databaseUrl)
+  // Knex uses Tarn. Adapt its release event so Vercel keeps the instance alive
+  // until idle connections are closed, without replacing Knex transactions.
+  attachDatabasePool({
+    options: { idleTimeoutMillis: 6000 },
+    on: (_event: "release", listener: (...args: any[]) => void) => {
+      db.client.pool.on("release", listener);
+    },
+  });
 export type Database = Knex | Knex.Transaction;
 export const now = () => new Date().toISOString();
 const timestamps = (t: Knex.CreateTableBuilder) => {
@@ -374,6 +400,7 @@ export async function migrate() {
         "006_auth_sessions_and_attempts",
         "007_document_ai_review",
         "008_ai_efficiency",
+        "009_cloud_runtime",
       ],
       getMigrationName: (migration: string) => migration,
       getMigration: async (name: string) => ({
@@ -392,7 +419,9 @@ export async function migrate() {
                       ? authSchema
                       : name === "007_document_ai_review"
                         ? intelligenceSchema
-                        : aiEfficiencySchema,
+                        : name === "008_ai_efficiency"
+                          ? aiEfficiencySchema
+                          : cloudSchema,
         down: async () => {
           throw new Error(
             "Destructive rollback is intentionally unsupported. Restore a verified backup.",

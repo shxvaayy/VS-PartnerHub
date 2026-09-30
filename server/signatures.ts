@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { createHash, randomInt, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { readStoredFile } from "./storage.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
+import { DatabaseRateLimitStore } from "./rate-limits.js";
 import { db, now, parseJson, type Database } from "./db.js";
 import { config } from "./config.js";
 import {
@@ -78,7 +78,7 @@ async function unchanged(envelope: any, record: WorkRecord, k: Database = db) {
     409,
     "The signing document has been replaced. A new request is required.",
   );
-  const bytes = await readFile(path.join(config.uploadDir, doc.storage_key));
+  const bytes = await readStoredFile(doc.storage_key);
   assert(
     digest(bytes) === envelope.source_digest,
     409,
@@ -109,6 +109,7 @@ signaturesRouter.use(authenticated, (req, _res, next) => {
   next();
 });
 const otpLimit = rateLimit({
+  store: new DatabaseRateLimitStore("signatures"),
   windowMs: 15 * 60000,
   limit: 20,
   standardHeaders: "draft-8",
@@ -256,7 +257,7 @@ signaturesRouter.post("/contracts/:id", async (req, res) => {
       422,
       "Choose at least one authorized signer from each contract party.",
     );
-    const source = await readFile(path.join(config.uploadDir, doc.storage_key));
+    const source = await readStoredFile(doc.storage_key);
     try {
       await PDFDocument.load(source);
     } catch {

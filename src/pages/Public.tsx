@@ -21,8 +21,6 @@ import {
   Handshake,
   Layers3,
   LockKeyhole,
-  Pause,
-  Play,
   ShieldCheck,
   Sparkles,
   UsersRound,
@@ -56,7 +54,6 @@ export function AuthFrame({
   children: React.ReactNode;
   subtitle?: string;
 }) {
-  const [motionPaused, setMotionPaused] = useState(false);
   return (
     <div className="auth-page">
       <aside className="auth-aside">
@@ -71,11 +68,7 @@ export function AuthFrame({
           <p>
             One trusted workspace for your partners, procurement and people.
           </p>
-          <div
-            className="auth-illustration"
-            aria-hidden="true"
-            data-motion={motionPaused ? "paused" : "running"}
-          >
+          <div className="auth-illustration" aria-hidden="true">
             <div className="auth-illustration-center">
               <Handshake size={52} />
             </div>
@@ -91,14 +84,6 @@ export function AuthFrame({
             <i />
             <i />
           </div>
-          <button
-            type="button"
-            className="auth-motion-toggle"
-            onClick={() => setMotionPaused((value) => !value)}
-          >
-            {motionPaused ? <Play size={12} /> : <Pause size={12} />}
-            {motionPaused ? "Resume animation" : "Pause animation"}
-          </button>
           <div className="auth-trust">
             <CheckCircle2 size={19} />
             <div>

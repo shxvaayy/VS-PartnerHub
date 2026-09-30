@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import rateLimit from "express-rate-limit";
+import { DatabaseRateLimitStore } from "./rate-limits.js";
 import { z } from "zod";
 import { db, now, nextNumber, parseJson, type Database } from "./db.js";
 import { config } from "./config.js";
@@ -34,6 +35,7 @@ import {
 } from "./events.js";
 export const authRouter = Router();
 const authLimit = rateLimit({
+  store: new DatabaseRateLimitStore("auth"),
   windowMs: 15 * 60000,
   limit: config.demo ? 100 : 20,
   standardHeaders: "draft-8",

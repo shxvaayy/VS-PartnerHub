@@ -1,7 +1,8 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { DatabaseRateLimitStore } from "./rate-limits.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import path from "node:path";
+import { sendStoredFile } from "./storage.js";
 import { z } from "zod";
 import { db, now, nextNumber } from "./db.js";
 import { config, INTERNAL_ORG_ID } from "./config.js";
@@ -94,12 +95,11 @@ publicRouter.get("/partners/:id/logo", async (req, res) => {
     })
     .first();
   assert(org?.logo_key, 404, "Logo not found.");
-  res
-    .type(org.logo_mime)
-    .set("Cache-Control", "no-store")
-    .sendFile(path.join(config.uploadDir, org.logo_key));
+  res.set("Cache-Control", "no-store");
+  await sendStoredFile(res, org.logo_key, org.logo_mime);
 });
 const inquiryLimit = rateLimit({
+  store: new DatabaseRateLimitStore("public-inquiries"),
   windowMs: 3600000,
   limit: 5,
   standardHeaders: "draft-8",

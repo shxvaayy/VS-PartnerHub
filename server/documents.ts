@@ -1,9 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { generateClientTokenFromReadWriteToken } from "@vercel/blob/client";
 import { config, INTERNAL_ORG_ID } from "./config.js";
 import { db, now, parseJson } from "./db.js";
 import { assert } from "./errors.js";
@@ -18,6 +18,14 @@ import {
   validateExtraction,
 } from "./document-intelligence.js";
 import { emptyIdentity } from "../shared/ai.js";
+import type { SessionUser } from "../shared/domain.js";
+import { accountAttempt } from "./auth-support.js";
+import {
+  deleteStoredFile,
+  readStoredFile,
+  sendStoredFile,
+  writeStoredFile,
+} from "./storage.js";
 export const documentsRouter = Router();
 documentsRouter.use(authenticated);
 const upload = multer({
@@ -81,47 +89,42 @@ documentsRouter.get("/", async (req, res) => {
     limit: p.limit,
   });
 });
-documentsRouter.post("/", upload.single("file"), async (req, res) => {
-  const input = documentSchema.parse(req.body),
-    file = req.file;
-  assert(file && file.size > 0, 422, "Choose a PDF, PNG or JPEG document.");
-  const detected = fileType(file.buffer);
-  assert(
-    detected && detected === file.mimetype,
-    422,
-    "Upload a valid PDF, PNG or JPEG. Renamed or unsupported files are not accepted.",
-  );
-  const orgId = req.user.internal
+type DocumentInput = z.infer<typeof documentSchema>;
+type DocumentFile = Pick<
+  Express.Multer.File,
+  "buffer" | "size" | "mimetype" | "originalname"
+>;
+async function authorizeUpload(input: DocumentInput, user: SessionUser) {
+  const orgId = user.internal
     ? input.organization_id || INTERNAL_ORG_ID
-    : req.user.organization_id!;
+    : user.organization_id!;
   assert(
     !input.organization_id ||
-      req.user.internal ||
-      input.organization_id === req.user.organization_id,
+      user.internal ||
+      input.organization_id === user.organization_id,
     403,
     "You cannot upload documents for another organization.",
   );
   if (input.record_id) {
-    const record = await accessibleRecord(input.record_id, req.user);
+    const record = await accessibleRecord(input.record_id, user);
     assert(
-      can(req.user, record.kind, "edit") ||
-        can(req.user, record.kind, "create"),
+      can(user, record.kind, "edit") || can(user, record.kind, "create"),
       403,
       "Your role cannot attach documents to this record.",
     );
     assert(
-      req.user.internal ||
+      user.internal ||
         [
           record.owner_org_id,
           record.partner_org_id,
           record.buyer_org_id,
-        ].includes(req.user.organization_id),
+        ].includes(user.organization_id),
       403,
       "Only the transaction parties can attach files.",
     );
   } else
     assert(
-      can(req.user, "documents", "create"),
+      can(user, "documents", "create"),
       403,
       "Your role cannot upload company documents.",
     );
@@ -142,13 +145,31 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
       "An expiry date is required for this document category.",
     );
   }
+  return orgId;
+}
+
+async function saveDocument(
+  input: DocumentInput,
+  file: DocumentFile | undefined,
+  user: SessionUser,
+  uploadId?: string,
+) {
+  assert(file && file.size > 0, 422, "Choose a PDF, PNG or JPEG document.");
+  assert(
+    file.size <= 10 * 1024 * 1024,
+    413,
+    "Choose a document no larger than 10 MB.",
+  );
+  const detected = fileType(file.buffer);
+  assert(
+    detected && detected === file.mimetype,
+    422,
+    "Upload a valid PDF, PNG or JPEG. Renamed or unsupported files are not accepted.",
+  );
+  const orgId = await authorizeUpload(input, user);
   const id = randomUUID(),
     key = `${id}.${detected === "application/pdf" ? "pdf" : detected === "image/png" ? "png" : "jpg"}`;
-  await mkdir(config.uploadDir, { recursive: true });
-  await writeFile(path.join(config.uploadDir, key), file.buffer, {
-    flag: "wx",
-    mode: 0o600,
-  });
+  await writeStoredFile(key, file.buffer, detected);
   try {
     await db.transaction(async (k) => {
       if (input.record_id) {
@@ -203,14 +224,14 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
         expires_at: input.expires_at || null,
         previous_id: input.previous_id || null,
         version,
-        uploaded_by: req.user.id,
+        uploaded_by: user.id,
         created_at: now(),
         updated_at: now(),
       };
       await k("documents").insert(doc);
       await audit(
         k,
-        req.user,
+        user,
         input.previous_id ? "document_renewed" : "document_uploaded",
         "documents",
         { id },
@@ -227,14 +248,149 @@ documentsRouter.post("/", upload.single("file"), async (req, res) => {
           "documents",
           ["verification"],
         );
+      if (uploadId) {
+        const completed = await k("document_uploads")
+          .where({ id: uploadId, user_id: user.id, status: "processing" })
+          .update({ status: "completed", document_id: id, updated_at: now() });
+        assert(
+          completed,
+          409,
+          "This upload is no longer available. Please upload the file again.",
+        );
+      }
     });
   } catch (e) {
-    await unlink(path.join(config.uploadDir, key));
+    await deleteStoredFile(key).catch(() => {});
     throw e;
   }
-  res
-    .status(201)
-    .json(cleanDocument(await db("documents").where({ id }).first()));
+  return cleanDocument(await db("documents").where({ id }).first());
+}
+
+documentsRouter.post("/uploads", async (req, res) => {
+  const { document, file } = z
+    .object({
+      document: documentSchema,
+      file: z.object({
+        name: z.string().min(1).max(200),
+        type: z.enum(["application/pdf", "image/png", "image/jpeg"]),
+        size: z
+          .number()
+          .int()
+          .positive()
+          .max(10 * 1024 * 1024),
+      }),
+    })
+    .parse(req.body);
+  await authorizeUpload(document, req.user);
+  if (config.fileStorage !== "blob") {
+    res.json({ transport: "multipart" });
+    return;
+  }
+  assert(
+    await accountAttempt("document-upload", req.user.id, 60, 60 * 60000),
+    429,
+    "The upload limit has been reached. Please try again later.",
+  );
+  const id = randomUUID();
+  const key = `pending-${id}.${file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg"}`;
+  const expiresAt = new Date(Date.now() + 15 * 60000).toISOString();
+  const token = await generateClientTokenFromReadWriteToken({
+    token: config.blobToken,
+    pathname: key,
+    allowedContentTypes: [file.type],
+    maximumSizeInBytes: file.size,
+    validUntil: Date.parse(expiresAt),
+    addRandomSuffix: false,
+    allowOverwrite: false,
+  });
+  await db("document_uploads").insert({
+    id,
+    user_id: req.user.id,
+    storage_key: key,
+    name: path
+      .basename(file.name)
+      .replace(/[\r\n\x00-\x1f]/g, "")
+      .slice(0, 200),
+    mime_type: file.type,
+    size: file.size,
+    input: JSON.stringify(document),
+    status: "pending",
+    created_at: now(),
+    expires_at: expiresAt,
+    updated_at: now(),
+  });
+  res.status(201).json({ transport: "direct", id, pathname: key, token });
+});
+
+documentsRouter.post("/uploads/:id/complete", async (req, res) => {
+  const id = uuid.parse(req.params.id);
+  const ticket = await db("document_uploads")
+    .where({ id, user_id: req.user.id })
+    .first();
+  assert(ticket, 404, "Upload not found.");
+  if (ticket.status === "completed") {
+    const doc = await db("documents").where({ id: ticket.document_id }).first();
+    assert(doc, 404, "Document not found.");
+    await authorizeUpload(
+      documentSchema.parse(parseJson(ticket.input)),
+      req.user,
+    );
+    res.json(cleanDocument(doc));
+    return;
+  }
+  assert(
+    ticket.expires_at > now(),
+    410,
+    "This upload expired. Please upload the file again.",
+  );
+  const claimed = await db("document_uploads")
+    .where({ id, user_id: req.user.id, status: "pending" })
+    .update({ status: "processing", updated_at: now() });
+  assert(
+    claimed,
+    409,
+    "This upload is already being processed. Please wait a moment.",
+  );
+  try {
+    const input = documentSchema.parse(parseJson(ticket.input));
+    // Permissions are checked again after upload, including any intervening role
+    // or organization changes. The blob URL supplied by a browser is never used.
+    await authorizeUpload(input, req.user);
+    const bytes = await readStoredFile(ticket.storage_key, ticket.size);
+    assert(
+      bytes.length === ticket.size,
+      422,
+      "The uploaded file is incomplete. Please upload it again.",
+    );
+    const doc = await saveDocument(
+      input,
+      {
+        buffer: bytes,
+        size: bytes.length,
+        mimetype: ticket.mime_type,
+        originalname: ticket.name,
+      },
+      req.user,
+      id,
+    );
+    // Retain the staging object until its write token expires. Deleting it early
+    // would let that token recreate the pathname. Only the validated copy is used.
+    res.status(201).json(doc);
+  } catch (error) {
+    await db("document_uploads")
+      .where({ id, status: "processing" })
+      .update({ status: "pending", updated_at: now() });
+    throw error;
+  }
+});
+
+documentsRouter.post("/", upload.single("file"), async (req, res) => {
+  const doc = await saveDocument(
+    documentSchema.parse(req.body),
+    req.file,
+    req.user,
+  );
+  res.status(201).json(doc);
 });
 documentsRouter.get("/:id/download", async (req, res) => {
   const id = uuid.parse(req.params.id),
@@ -260,7 +416,7 @@ documentsRouter.get("/:id/download", async (req, res) => {
   res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.download(path.join(config.uploadDir, doc.storage_key), doc.name);
+  await sendStoredFile(res, doc.storage_key, doc.mime_type, doc.name);
 });
 documentsRouter.get("/:id", async (req, res) => {
   const doc = await db("documents")

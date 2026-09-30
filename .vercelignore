@@ -1,0 +1,17 @@
+.env*
+.local/
+.agents/
+skills-lock.json
+artifacts/
+data/
+uploads/
+backups/
+node_modules/
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+ios/
+android/
+*.log

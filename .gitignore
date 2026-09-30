@@ -21,3 +21,5 @@ artifacts/
 *.keystore
 *.p12
 *.mobileprovision
+.vercel
+.env*

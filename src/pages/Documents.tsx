@@ -447,6 +447,14 @@ export function DocumentUpload({
                 disabled={Boolean(previous || organizationId)}
               >
                 <option value="">Choose an organization</option>
+                {user!.organization &&
+                  !organizations.data?.items.some(
+                    (o: any) => o.id === user!.organization_id,
+                  ) && (
+                    <option value={user!.organization_id!}>
+                      {user!.organization.legal_name}
+                    </option>
+                  )}
                 {organizations.data?.items.map((o: any) => (
                   <option key={o.id} value={o.id}>
                     {o.legal_name}
