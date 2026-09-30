@@ -1,0 +1,16 @@
+{
+  "power-bi": {
+    "name": "Microsoft Power BI Desktop",
+    "version": "2.158.1177.0",
+    "url": "https://download.microsoft.com/download/8/8/0/880BCA75-79DD-466A-927D-1ABF1F5454B0/PBIDesktopSetup-2026-09_x64.exe",
+    "sha256": "4924187834D34605C3046F01B876FBA6A2CF36F864C36D16FD52C3F17A21009C",
+    "source": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/m/Microsoft/PowerBI/2.158.1177.0/Microsoft.PowerBI.installer.yaml"
+  },
+  "tableau": {
+    "name": "Tableau Reader",
+    "version": "25.1.463",
+    "url": "https://downloads.tableau.com/tssoftware/TableauReader-64bit-2025-1-0.exe",
+    "sha256": "8E41B20DFE1B76ED823D00802B6647AB672CC8978858078C31CD79CD84DBFBEC",
+    "source": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/t/Tableau/Reader/25.1.463/Tableau.Reader.installer.yaml"
+  }
+}

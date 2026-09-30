@@ -1,0 +1,45 @@
+name: Verify desktop BI workbooks
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/production-acceptance]
+    paths:
+      - server/bi-exports.ts
+      - server/tableau-exports.ts
+      - scripts/prepare-bi-desktop.ts
+      - scripts/*bi-desktop*
+      - scripts/desktop-bi-tools.json
+      - tests/fixtures/analytics-report.ts
+      - .github/workflows/desktop-bi.yml
+permissions:
+  contents: read
+concurrency:
+  group: desktop-bi-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    name: ${{ matrix.platform }} desktop acceptance
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [power-bi, tableau]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Prepare synthetic offline workbooks
+        run: node --import tsx scripts/prepare-bi-desktop.ts
+      - name: Install and open the official desktop application
+        shell: powershell
+        run: ./scripts/verify-bi-desktop.ps1 -Platform '${{ matrix.platform }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: partnerhub-desktop-${{ matrix.platform }}
+          path: artifacts/desktop-bi/
+          retention-days: 14
