@@ -279,7 +279,7 @@ try {
 } finally {
   if (derivedData && !reuseIosBuild)
     await fs.rm(derivedData, { recursive: true, force: true });
-  if (simulator) {
+  if (simulator && !reuseIosBuild) {
     try {
       run("xcrun", ["simctl", "shutdown", simulator]);
     } catch {}

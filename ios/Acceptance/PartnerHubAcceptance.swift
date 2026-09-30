@@ -43,8 +43,38 @@ final class PartnerHubAcceptance: XCTestCase {
 
     func openFileActions() {
         tap(app.buttons["Download Power BI project"].firstMatch)
-        let save = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Save to Files")).firstMatch
+        // iOS 26 exposes system share actions as cells, older versions as buttons.
+        let save = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 30), "The native file sheet must offer Save to Files.")
+        verifyCache("populated")
+    }
+
+    func closeFileActions() {
+        let sheet = app.otherElements["ActivityListView"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10))
+        let close = app.buttons["Close"].firstMatch
+        if close.exists && close.isHittable {
+            close.tap()
+        } else {
+            // Dismiss the system sheet with its standard header drag gesture.
+            let start = sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06))
+            let end = sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
+            start.press(forDuration: 0.1, thenDragTo: end)
+            let dragDismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: sheet)
+            if XCTWaiter.wait(for: [dragDismissed], timeout: 3) != .completed {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+            }
+        }
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: sheet)
+        wait(for: [dismissed], timeout: 15)
+    }
+
+    func verifyCache(_ state: String) {
+        guard let simulator = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] else {
+            XCTFail("The actual test simulator must be identified for file verification.")
+            return
+        }
+        control("native-cache/\(state)/\(simulator)")
     }
 
     func testAuthenticatedWorkspace() throws {
@@ -69,7 +99,7 @@ final class PartnerHubAcceptance: XCTestCase {
 
         openFileActions()
         record("Downloaded report opens native iOS file actions")
-        tap(app.buttons["Close"].firstMatch)
+        closeFileActions()
 
         navigate("Requirements")
         let newRecord = app.links.matching(NSPredicate(format: "label CONTAINS %@", "Native resume verification")).firstMatch
@@ -95,10 +125,11 @@ final class PartnerHubAcceptance: XCTestCase {
         navigate("Reports & analytics")
         tap(app.buttons["Power BI preview"].firstMatch)
         openFileActions()
-        tap(app.buttons["Close"].firstMatch)
+        closeFileActions()
         tap(app.buttons["Open navigation"].firstMatch)
         tap(app.buttons["Sign out"].firstMatch)
         XCTAssertTrue(app.buttons["Sign in to PartnerHub"].firstMatch.waitForExistence(timeout: 30))
+        verifyCache("empty")
         record("Native sign out returns to the login screen")
     }
 

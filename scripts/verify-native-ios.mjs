@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
+import { strFromU8, unzipSync } from "fflate";
 import { startNativeFixture } from "./native-fixture.mjs";
 
 const out = path.resolve("artifacts/native-verification/ios-acceptance");
@@ -21,8 +22,43 @@ const run = (command, args) =>
     maxBuffer: 16 * 1024 * 1024,
   });
 let fixture, simulator, testedSimulator;
+const cacheChecks = { populated: 0, empty: 0 };
 try {
-  fixture = await startNativeFixture();
+  fixture = await startNativeFixture({
+    async checkNativeCache(state, device, report) {
+      assert.equal(
+        device,
+        simulator,
+        "Inspect only the active test simulator.",
+      );
+      const container = run("xcrun", [
+        "simctl",
+        "get_app_container",
+        device,
+        "com.vijaysoftwaresolutions.partnerhub",
+        "data",
+      ]).trim();
+      const cache = path.join(container, "Library/Caches/partnerhub-exports");
+      if (state === "populated") {
+        const files = [];
+        for (const directory of await fs.readdir(cache)) {
+          for (const name of await fs.readdir(path.join(cache, directory)))
+            if (/^VS-PartnerHub-Power-BI-[\d-]+\.zip$/.test(name))
+              files.push(path.join(cache, directory, name));
+        }
+        assert.equal(files.length, 1, "A fresh private report must be cached.");
+        const archive = unzipSync(await fs.readFile(files[0]));
+        const snapshot = JSON.parse(strFromU8(archive["data/analytics.json"]));
+        assert.deepEqual(snapshot.views, report.views);
+      } else {
+        const deadline = Date.now() + 5000;
+        while (existsSync(cache) && Date.now() < deadline)
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        assert(!existsSync(cache), "Logout must remove cached private files.");
+      }
+      cacheChecks[state]++;
+    },
+  });
   run("ruby", ["scripts/prepare-native-ios-tests.rb"]);
   const inventory = JSON.parse(
     run("xcrun", ["simctl", "list", "devices", "available", "--json"]),
@@ -116,28 +152,11 @@ try {
     testedSimulator,
     "Cache checks must use the simulator that actually executed XCTest.",
   );
-  const container = run("xcrun", [
-    "simctl",
-    "get_app_container",
-    simulator,
-    "com.vijaysoftwaresolutions.partnerhub",
-    "data",
-  ]).trim();
-  assert(
-    !existsSync(path.join(container, "Library/Caches/partnerhub-exports")),
-    "Signing out must remove cached private downloads.",
-  );
+  assert.deepEqual(cacheChecks, { populated: 2, empty: 1 });
   checks.push({
-    name: "Native sign out removed cached private exports",
+    name: "Private iOS archives matched the real API and sign out removed them",
     passed: true,
   });
-  run("xcrun", [
-    "simctl",
-    "io",
-    simulator,
-    "screenshot",
-    path.join(out, "signed-out.png"),
-  ]);
   console.log(`iPhone acceptance: ${checks.length}/${checks.length} passed.`);
 } catch (error) {
   process.exitCode = 1;
@@ -147,17 +166,6 @@ try {
     error: String(error),
   });
   console.error(error);
-  if (simulator) {
-    try {
-      run("xcrun", [
-        "simctl",
-        "io",
-        simulator,
-        "screenshot",
-        path.join(out, "failure.png"),
-      ]);
-    } catch {}
-  }
 } finally {
   if (existsSync(resultBundle)) {
     try {
@@ -170,11 +178,32 @@ try {
         "--output-path",
         path.join(out, "attachments"),
       ]);
+      const manifest = JSON.parse(
+        await fs.readFile(path.join(out, "attachments/manifest.json"), "utf8"),
+      );
+      for (const item of manifest.flatMap((test) => test.attachments || [])) {
+        const name = item.suggestedHumanReadableName || "";
+        const destination = name.startsWith("Failure screenshot_")
+          ? "failure.png"
+          : name.startsWith("Native sign out returns to the login screen_")
+            ? "signed-out.png"
+            : null;
+        if (destination && /^[a-f0-9-]+\.png$/i.test(item.exportedFileName))
+          await fs.copyFile(
+            path.join(out, "attachments", item.exportedFileName),
+            path.join(out, destination),
+          );
+      }
     } catch (error) {
       console.error("Could not export XCTest attachments:", error.message);
     }
   }
   await fixture?.close();
+  if (simulator) {
+    try {
+      run("xcrun", ["simctl", "shutdown", simulator]);
+    } catch {}
+  }
   if (reuseBuild) await fs.rm(derivedData, { recursive: true, force: true });
   await fs.writeFile(
     path.join(out, "report.json"),
@@ -184,6 +213,7 @@ try {
         commit: run("git", ["rev-parse", "HEAD"]).trim(),
         checks,
         testedSimulator,
+        cacheChecks,
         isolatedFixtures: true,
         realNativeWebView: true,
         physicalDevice: false,

@@ -11,7 +11,7 @@ export const nativeOrigin = "http://127.0.0.1:4207";
 export const controlOrigin = "http://127.0.0.1:4208";
 
 /** Disposable native-acceptance data. Never imports a live environment file. */
-export async function startNativeFixture() {
+export async function startNativeFixture({ checkNativeCache } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "partnerhub-native-"));
   Object.assign(process.env, {
     NODE_ENV: "test",
@@ -82,10 +82,28 @@ export async function startNativeFixture() {
       .send({});
     return { id: response.body.id, title: response.body.title };
   }
+  async function analytics() {
+    const client = supertest.agent(app);
+    const login = await client.post("/api/auth/login").send({
+      email: demoAccounts.find((account) => account.key === "admin").email,
+      password: demoPassword,
+    });
+    assert.equal(login.status, 200);
+    const response = await client.get("/api/reports/analytics");
+    assert.equal(response.status, 200);
+    await client
+      .post("/api/auth/logout")
+      .set("X-CSRF-Token", login.body.csrfToken)
+      .send({});
+    return response.body;
+  }
   await online();
   const controller = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     try {
+      const cacheRequest = req.url?.match(
+        /^\/native-cache\/(populated|empty)\/([a-f0-9-]{36})$/i,
+      );
       if (req.method === "GET" && req.url === "/health")
         res.end(
           JSON.stringify({ online: !!server?.listening, isolated: true }),
@@ -98,7 +116,14 @@ export async function startNativeFixture() {
         res.end("{}");
       } else if (req.method === "POST" && req.url === "/requirement")
         res.end(JSON.stringify(await requirement()));
-      else {
+      else if (req.method === "POST" && cacheRequest && checkNativeCache) {
+        await checkNativeCache(
+          cacheRequest[1],
+          cacheRequest[2],
+          cacheRequest[1] === "populated" ? await analytics() : undefined,
+        );
+        res.end("{}");
+      } else {
         res.statusCode = 404;
         res.end("{}");
       }
