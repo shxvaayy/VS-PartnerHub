@@ -34,13 +34,35 @@ const acceptance = {
   productionRecordsChanged: false,
   externalEmailsSent: false,
   checks: [],
+  hostAlerts: [],
+  reconnectAttempts: 0,
+  accessibilityErrors: [],
 };
+function control(xml, predicate) {
+  for (const [node] of xml.matchAll(/<node\b[^>]*>/g)) {
+    const attribute = (name) =>
+      node.match(new RegExp(`${name}="([^"]*)"`))?.[1] || "";
+    if (!predicate(attribute)) continue;
+    const bounds = attribute("bounds").match(
+      /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/,
+    );
+    if (!bounds || bounds[1] === bounds[3] || bounds[2] === bounds[4]) continue;
+    return {
+      x: Math.round((Number(bounds[1]) + Number(bounds[3])) / 2),
+      y: Math.round((Number(bounds[2]) + Number(bounds[4])) / 2),
+    };
+  }
+}
+function tap(point) {
+  run(["shell", "input", "tap", String(point.x), String(point.y)]);
+}
 try {
   assert.match(run(["install", "--no-streaming", "-r", apk]), /Success/);
   acceptance.checks.push({
     name: "Exact signed release APK installed on an Android emulator",
     passed: true,
   });
+  run(["logcat", "-c"]);
   run([
     "shell",
     "am",
@@ -49,10 +71,11 @@ try {
     "-n",
     report.applicationId + "/.MainActivity",
   ]);
-  const end = Date.now() + 120000;
+  const end = Date.now() + 180000;
   let loaded = false;
   while (Date.now() < end) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
+    let xml;
     try {
       run([
         "shell",
@@ -60,17 +83,48 @@ try {
         "dump",
         "/sdcard/partnerhub-release-window.xml",
       ]);
-      const xml = run([
-        "shell",
-        "cat",
-        "/sdcard/partnerhub-release-window.xml",
-      ]);
+      xml = run(["shell", "cat", "/sdcard/partnerhub-release-window.xml"]);
       await fs.writeFile(path.join(out, "launch-window.xml"), xml);
-      if (/Work email|Sign in to PartnerHub/.test(xml)) {
-        loaded = true;
-        break;
-      }
-    } catch {}
+    } catch (error) {
+      if (acceptance.accessibilityErrors.length < 5)
+        acceptance.accessibilityErrors.push(error.message.slice(0, 800));
+      continue;
+    }
+    assert(
+      !/VS PartnerHub[^"<]*responding/.test(xml),
+      "The installed release application stopped responding.",
+    );
+    // A cold emulator can show an unrelated Pixel Launcher ANR over the app.
+    // Recover only that named host component; never dismiss a PartnerHub ANR.
+    if (/Pixel Launcher[^"<]*responding/.test(xml)) {
+      const close = control(
+        xml,
+        (attr) =>
+          attr("package") === "android" &&
+          attr("resource-id") === "android:id/aerr_close",
+      );
+      assert(
+        close && acceptance.hostAlerts.length < 2,
+        "The emulator launcher is not stable.",
+      );
+      acceptance.hostAlerts.push({
+        application: "Pixel Launcher",
+        action: "Close app",
+      });
+      tap(close);
+      continue;
+    }
+    if (/Work email|Sign in to PartnerHub/.test(xml)) {
+      loaded = true;
+      break;
+    }
+    const reconnect = control(xml, (attr) =>
+      /Return to workspace/.test(attr("text") + attr("content-desc")),
+    );
+    if (reconnect && acceptance.reconnectAttempts < 2) {
+      acceptance.reconnectAttempts++;
+      tap(reconnect);
+    }
   }
   const screenshot = execFileSync("adb", ["exec-out", "screencap", "-p"], {
     timeout: 15000,
@@ -99,6 +153,34 @@ try {
   });
   process.exitCode = 1;
 } finally {
+  try {
+    const screenshot = execFileSync("adb", ["exec-out", "screencap", "-p"], {
+      timeout: 15000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    await fs.writeFile(path.join(out, "signed-release-launch.png"), screenshot);
+  } catch {}
+  for (const [filename, args] of [
+    [
+      "native-launch.log",
+      [
+        "logcat",
+        "-d",
+        "-v",
+        "time",
+        "-s",
+        "Capacitor:D",
+        "Capacitor/Console:D",
+        "chromium:E",
+        "AndroidRuntime:E",
+      ],
+    ],
+    ["connectivity.txt", ["shell", "dumpsys", "connectivity"]],
+  ]) {
+    try {
+      await fs.writeFile(path.join(out, filename), run(args));
+    } catch {}
+  }
   acceptance.completedAt = new Date().toISOString();
   acceptance.passed =
     acceptance.checks.length === 3 &&
