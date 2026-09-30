@@ -150,10 +150,6 @@ try {
       const report = await page.evaluate(() =>
         fetch("/api/reports/analytics").then((r) => r.json()),
       );
-      const downloading = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === "/api/reports/power-bi",
-      );
       await page
         .getByRole("button", { name: "Download Power BI project", exact: true })
         .click();
@@ -162,9 +158,11 @@ try {
           timeout: 30000,
         })
         .toMatch(/ChooserActivity/);
-      const response = await downloading;
-      assert.equal(response.status(), 200);
-      const original = await response.body();
+      const original = fixture.downloadedReport();
+      assert(
+        original?.length > 0,
+        "The actual report bytes sent by the fixture must be captured.",
+      );
       await fs.writeFile(path.join(out, "http-report.zip"), original);
       await device.screenshot({
         path: path.join(out, "native-file-sharing.png"),

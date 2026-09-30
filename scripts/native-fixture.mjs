@@ -40,6 +40,7 @@ export async function startNativeFixture({
   await seed();
   const app = createApp();
   const requests = [];
+  let downloadedReport;
   let server;
   async function online() {
     if (server?.listening) return;
@@ -53,6 +54,16 @@ export async function startNativeFixture({
         };
         requests.push(request);
         if (requests.length > 1000) requests.shift();
+        if (request.path === "/api/reports/power-bi") {
+          const end = res.end;
+          res.end = function (body, ...args) {
+            // Observe the real serialized response without replacing it. Some
+            // Android WebViews report an empty download body through CDP.
+            if (this.statusCode === 200 && Buffer.isBuffer(body))
+              downloadedReport = Buffer.from(body);
+            return end.call(this, body, ...args);
+          };
+        }
         res.once("finish", () => {
           request.status = res.statusCode;
         });
@@ -170,6 +181,8 @@ export async function startNativeFixture({
     offline,
     requirement,
     diagnostics: () => ({ requests, online: !!server?.listening }),
+    downloadedReport: () =>
+      downloadedReport ? Buffer.from(downloadedReport) : undefined,
     async close() {
       if (closed) return;
       closed = true;
