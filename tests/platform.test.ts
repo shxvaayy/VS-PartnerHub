@@ -15,6 +15,7 @@ import { enterpriseCases } from "./enterprise.cases.js";
 import { authCases } from "./auth.cases.js";
 import { runtimeCases } from "./runtime.cases.js";
 import { analyticsCases } from "./analytics.cases.js";
+import { complianceCases } from "./compliance.cases.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "vs-partnerhub-test-"));
 process.env.NODE_ENV = "test";
@@ -1605,4 +1606,12 @@ analyticsCases({
   input,
   org,
   future,
+});
+
+complianceCases({
+  get db() {
+    return db;
+  },
+  clients,
+  org,
 });

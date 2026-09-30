@@ -2,6 +2,8 @@
 
 Reviewed on 30 September 2026 against the original DOCX, the 22-section requirements and the supplied team-allocation checklist. This is a shared platform with persisted workflows and verification evidence. **The entire specification is not yet signed off for production.**
 
+The user confirmed that only the supplied functional documents were provided, without company provider accounts or deployment selections. Those unspecified external deployments are not prerequisites for continuing application work or reviewing the web release. [SUBMISSION_SCOPE.md](SUBMISSION_SCOPE.md) distinguishes the implemented software from external publication, connections and operating acceptance without claiming those deployments are complete.
+
 The user explicitly deferred live email-provider setup on 30 September 2026. Email authentication and notification code remains implemented; external OTP/reset/business-email delivery is excluded from the current submission and is not represented as verified.
 
 The detailed field and workflow mapping is in [REQUIREMENTS.md](REQUIREMENTS.md); the 22-section and six-capability checklist is in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). Test methods, recorded results and their limits are in [VERIFICATION.md](VERIFICATION.md).
@@ -23,15 +25,15 @@ The detailed field and workflow mapping is in [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## Latest live configuration check
 
-The authorized live provider-status API was read on **30 September 2026 at 08:12 UTC**. No provider settings were changed and no email was sent.
+The authorized live provider-status API was read on **30 September 2026 at 09:15 UTC**. No provider settings were changed and no email was sent.
 
 - Email: disabled, not configured, and no SMTP password/Resend key present.
 - VS AI: a provider is configured. This configuration flag is distinct from the separate recorded real-provider acceptance tests.
-- The earlier **07:32 UTC** inspection found no business integration endpoints or active access tokens in the inspected platform administrator's scope. This is not evidence about another organization's private integration settings.
+- The same inspection found no active business integration endpoints or access tokens in the inspected platform administrator's scope. This is not evidence about another organization's private integration settings.
 
-The current redacted provider result is retained locally at `artifacts/workspace-audit/live-provider-status.json`; the earlier integration inspection remains in `artifacts/document-audit/live-provider-status.json`. No passwords, API keys, mail addresses or private company records are included in this status document.
+The redacted result is retained locally at `artifacts/workspace-audit/external-blocker-revalidation.json`. No passwords, API keys, mail addresses or private company records are included in this status document.
 
-## Inputs needed to close production acceptance
+## Deployment inputs when those external services are selected
 
 1. **Deferred by the user for this submission:** configure a verified company sender using SMTP or Resend, then verify OTP, password reset and business email receipt in the intended external inboxes. Saving settings alone does not establish delivery.
 2. Configure and rehearse off-site recovery and operational monitoring with the organization's retention and recovery objectives.

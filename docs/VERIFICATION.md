@@ -1,5 +1,13 @@
 # Verification evidence
 
+## Compliance expiry review — 30 September 2026
+
+Seven focused regressions cover the full default reminder sequence, organization/document policy overrides, existing notice compatibility and human changes after the worker's initial batch read. Five scenarios failed against the preceding implementation: the post-expiry notice could be suppressed by a due-day notice; a verification rejection or superseding upload could be processed from stale document data; and a renewed or terminated contract could receive a false expiry audit/notification. All seven focused checks pass after the correction.
+
+The tests run inside the existing disposable SQLite/PostgreSQL harness. Date progression verifies persisted notifications and audit entries. Controlled changes committed after the batch read verify that the worker respects current decisions. No live business record or provider configuration is changed. Before/after evidence is retained at `artifacts/compliance-audit/`; these regressions are in `tests/compliance.cases.ts`.
+
+The complete suite passed **159/159 on SQLite and 159/159 on PostgreSQL**, with no skipped tests. TypeScript, repository formatting and patch whitespace checks also passed. These seven cases extend the preceding 152-test suite; the prior browser/layout evidence below retains its original scope.
+
 ## Workspace review — 30 September 2026
 
 The current review corrects directory exports that ignored location/business filters, stale search values after browser Back, lost list context in profile/record Back links, and clipped status/verification menus on phones. Directory filters and layout, plus recruitment pipeline selection, survive reloads. Workflow stages and commercial tables support keyboard scrolling in Chrome and Safari. Company headings, reference metadata and verification notes now use readable contrast.

@@ -116,6 +116,8 @@ The repository does not prescribe an untested RPO/RTO. Choose backup frequency a
 
 Document reminders default to 90/60/30 days and expiry, with deduplicated notifications. Contract reminders use the contract's notice period. Expired approved company documents are marked expired. Expired contracts cannot continue through ordinary approval transitions without a reviewed renewal.
 
+The due-day notice and the notice after expiry are distinct. Existing expiry notices from earlier releases remain deduplicated. The worker reloads and locks each current record before deciding; a concurrent verification rejection, superseding upload, contract renewal or termination cannot be replaced by a stale expiry decision. Document policy definitions are shared within each maintenance run instead of being reloaded for every document.
+
 Candidate retention defaults to 365 days. The server records a retention deadline on submission. After it passes, only closed/joined candidates are anonymized; related interview payloads, document metadata/files, comments and versions are removed. Active recruitment is preserved. Adjusting the setting governs newly captured deadlines; review existing retention schedules under the company's policy.
 
 Audit retention defaults to a seven-year minimum policy. Logs are not automatically purged. Administrators should archive them under the approved legal/records procedure. Operational backups and replicas need matching retention rules; removing a live record cannot erase historic backups.

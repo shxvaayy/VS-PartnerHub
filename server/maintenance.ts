@@ -1,83 +1,135 @@
 import { db, now, parseJson } from "./db.js";
 import { audit, notifyOrganizations } from "./events.js";
 import { deleteStoredFile } from "./storage.js";
-import { documentPolicies } from "./master-data.js";
+import {
+  documentPolicyCatalogue,
+  resolveDocumentPolicies,
+} from "./master-data.js";
 let running = false;
 export async function maintenance() {
   if (running) return;
   running = true;
   try {
-    const settings = parseJson(
-      (await db("settings").where({ key: "platform" }).first())?.value,
-    );
+    const catalogue = await documentPolicyCatalogue();
+    const policies = new Map<
+      string,
+      ReturnType<typeof resolveDocumentPolicies>
+    >();
     const today = now().slice(0, 10),
       horizon = new Date(Date.now() + 365 * 86400000)
         .toISOString()
         .slice(0, 10);
     const documents = await db("documents")
-      .whereNull("record_id")
-      .whereNotNull("expires_at")
-      .where("expires_at", "<=", horizon)
+      .join("organizations", "documents.organization_id", "organizations.id")
+      .select("documents.id", "organizations.type as organization_type")
+      .whereNull("documents.record_id")
+      .whereNotNull("documents.expires_at")
+      .where("documents.expires_at", "<=", horizon)
       .whereNotExists(
         db("documents as next").whereRaw("next.previous_id = documents.id"),
       );
-    for (const doc of documents) {
-      const org = await db("organizations")
-        .where({ id: doc.organization_id })
-        .select("type")
-        .first();
-      const policy = (await documentPolicies(org?.type || "vendor")).find(
-        (p) => p.category === doc.category,
-      );
-      const windows = [
-        ...(policy?.reminder_days ||
-          settings.documentExpiryDays || [90, 60, 30]),
-        0,
-      ].sort((a: number, b: number) => a - b);
-      const days = Math.ceil(
-          (Date.parse(doc.expires_at) - Date.parse(today)) / 86400000,
-        ),
-        window = windows.find((w: number) => days <= w);
-      if (window === undefined) continue;
+    for (const candidate of documents) {
+      // The batch identifies work; a human decision or a newer upload may have
+      // committed since it was read. Lock and recheck before changing anything.
       await db.transaction(async (k) => {
+        const query = k("documents")
+          .where({ id: candidate.id })
+          .whereNull("record_id")
+          .first();
+        if (k.client.config.client === "pg") query.forUpdate();
+        const doc = await query;
+        if (
+          !doc?.expires_at ||
+          (await k("documents").where({ previous_id: doc.id }).first("id"))
+        )
+          return;
+        const type = candidate.organization_type;
+        if (!policies.has(type))
+          policies.set(type, resolveDocumentPolicies(type, catalogue));
+        const policy = policies
+          .get(type)!
+          .find((p) => p.category === doc.category);
+        const windows = [
+          ...(policy?.reminder_days ||
+            catalogue.settings.documentExpiryDays || [90, 60, 30]),
+          0,
+        ].sort((a: number, b: number) => a - b);
+        const days = Math.ceil(
+            (Date.parse(doc.expires_at) - Date.parse(today)) / 86400000,
+          ),
+          window = windows.find((w: number) => days <= w);
+        if (!Number.isFinite(days) || window === undefined) return;
         if (days < 0 && doc.status === "approved") {
-          await k("documents")
-            .where({ id: doc.id })
+          const changed = await k("documents")
+            .where({ id: doc.id, status: "approved" })
             .update({ status: "expired", updated_at: now() });
+          if (!changed) return;
           await audit(k, null, "document_expired", "documents", doc, "expired");
         }
+        const dedupeKey = `document:${doc.id}:${days < 0 ? "expired" : window}`;
+        if (days < 0)
+          // Preserve expiry notices sent by older releases, which shared the
+          // due-day key. A due-day notice must not suppress the expired notice.
+          await k("notifications")
+            .where({
+              category: "document_expiry",
+              title: "Document renewal needed",
+              dedupe_key: `document:${doc.id}:0`,
+            })
+            .whereNotExists(
+              k("notifications as delivered")
+                .whereRaw("delivered.user_id = notifications.user_id")
+                .where("delivered.dedupe_key", dedupeKey),
+            )
+            .update({ dedupe_key: dedupeKey });
         await notifyOrganizations(
           k,
           [doc.organization_id],
           days < 0
             ? "Document renewal needed"
-            : `Document expires in ${days} days`,
+            : days === 0
+              ? "Document expires today"
+              : `Document expires in ${days} days`,
           `${doc.category}: ${doc.name}. Upload a renewed version to maintain compliance.`,
           "/app/documents",
           "document_expiry",
           ["verification"],
-          `document:${doc.id}:${window}`,
+          dedupeKey,
         );
       });
     }
     const contracts = await db("records")
       .where({ kind: "contracts" })
-      .whereIn("status", ["active", "renewed"]);
-    for (const contract of contracts) {
-      const p = parseJson(contract.payload),
-        days = Math.ceil(
-          (Date.parse(p.end_date) - Date.parse(today)) / 86400000,
-        );
-      if (days > (p.renewal_notice_days || 30)) continue;
+      .whereIn("status", ["active", "renewed"])
+      .select("id");
+    for (const candidate of contracts) {
       await db.transaction(async (k) => {
+        const query = k("records")
+          .where({ id: candidate.id, kind: "contracts" })
+          .first();
+        if (k.client.config.client === "pg") query.forUpdate();
+        const contract = await query;
+        if (!contract || !["active", "renewed"].includes(contract.status))
+          return;
+        const p = parseJson(contract.payload),
+          days = Math.ceil(
+            (Date.parse(p.end_date) - Date.parse(today)) / 86400000,
+          );
+        if (!Number.isFinite(days) || days > (p.renewal_notice_days ?? 30))
+          return;
         if (days < 0) {
-          await k("records")
-            .where({ id: contract.id, version: contract.version })
+          const changed = await k("records")
+            .where({
+              id: contract.id,
+              version: contract.version,
+              status: contract.status,
+            })
             .update({
               status: "expired",
               version: contract.version + 1,
               updated_at: now(),
             });
+          if (!changed) return;
           await audit(
             k,
             null,

@@ -2,6 +2,8 @@
 
 Reviewed against the complete **VS_PartnerHub_Enterprise_Product_Documentation (1).docx**, the accompanying 22-section specification and the six explicit AI requirements on 30 September 2026. Field/workflow implementation is mapped in [REQUIREMENTS.md](REQUIREMENTS.md); executed checks and their limits are recorded in [VERIFICATION.md](VERIFICATION.md).
 
+The user supplied functional requirements without selecting external provider accounts, a BI tenant, independent backup storage or native distribution. These do not block the application review. See [SUBMISSION_SCOPE.md](SUBMISSION_SCOPE.md) for the distinction between software acceptance and unconfigured external deployments. Live email remains explicitly deferred.
+
 “Verified” describes the listed tests. It is not a guarantee of zero defects, external service delivery or an untested production capacity. Functional suites use disposable databases. Live checks use the deployed application and clearly labelled, temporary QA inputs, which are removed after testing.
 
 | User section | Capability                 | Verification and release state                                                                                                                                                                                                                                                                                                                                                                                                                                         |
