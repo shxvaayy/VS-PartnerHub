@@ -45,6 +45,9 @@ export function createApp() {
           fontSrc: ["'self'"],
           connectSrc: [
             "'self'",
+            // The browser SDK uploads through this API before private storage.
+            "https://vercel.com/api/blob",
+            "https://vercel.com/api/blob/",
             "https://blob.vercel-storage.com",
             "https://*.blob.vercel-storage.com",
           ],
