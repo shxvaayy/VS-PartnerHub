@@ -87,12 +87,21 @@ export default function PowerBiPreview({
   const navigation = useRef<HTMLElement>(null);
   useEffect(() => {
     const region = navigation.current;
-    const active = region?.querySelector<HTMLElement>("[aria-current=page]");
-    if (!region || !active || region.scrollWidth <= region.clientWidth) return;
-    const left = active.offsetLeft - region.offsetLeft;
-    if (left < region.scrollLeft) region.scrollLeft = Math.max(0, left - 12);
-    else if (left + active.offsetWidth > region.scrollLeft + region.clientWidth)
-      region.scrollLeft = left + active.offsetWidth - region.clientWidth + 12;
+    if (!region) return;
+    const revealActivePage = () => {
+      const active = region.querySelector<HTMLElement>("[aria-current=page]");
+      if (!active || region.scrollWidth <= region.clientWidth) return;
+      const bounds = region.getBoundingClientRect();
+      const selected = active.getBoundingClientRect();
+      if (selected.left < bounds.left + 12)
+        region.scrollLeft += selected.left - bounds.left - 12;
+      else if (selected.right > bounds.right - 12)
+        region.scrollLeft += selected.right - bounds.right + 12;
+    };
+    revealActivePage();
+    const observer = new ResizeObserver(revealActivePage);
+    observer.observe(region);
+    return () => observer.disconnect();
   }, [view.id]);
   const Icon = icons[view.id];
   const index = report.views.findIndex((item) => item.id === view.id);
@@ -126,8 +135,7 @@ export default function PowerBiPreview({
           aria-label="Power BI dashboard pages"
           ref={navigation}
         >
-          <span className="bi-nav-label">DASHBOARD PAGES</span>
-          {report.views.map((item, at) => {
+          {report.views.map((item) => {
             const PageIcon = icons[item.id];
             return (
               <button
@@ -138,18 +146,9 @@ export default function PowerBiPreview({
               >
                 <PageIcon size={17} />
                 <span>{item.title}</span>
-                <small>{String(at + 1).padStart(2, "0")}</small>
               </button>
             );
           })}
-          <div className="bi-nav-foot">
-            <ShieldCheck size={18} />
-            <span>
-              One shared source.
-              <br />
-              Your permitted reports.
-            </span>
-          </div>
         </nav>
         <section
           className="bi-canvas"

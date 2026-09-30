@@ -47,7 +47,7 @@ The additional roadmap work includes catalog/import/export tools, configurable s
 ## Remaining operational inputs
 
 1. **Company email sender and provider — deferred by the user:** configure an authorized SMTP sender or a verified Resend domain/key when this work resumes; validate actual OTP, reset and business-message delivery to intended external inboxes. Local SMTP acceptance is already tested and is not evidence of external delivery.
-2. **Production operations:** choose off-site backup destination/schedule/retention, key escrow and monitoring/recovery ownership, then rehearse restoration from that independent destination and measure business recovery/load objectives. The live PostgreSQL/private-Blob snapshot has passed an isolated local restore; this is not an off-site recovery SLA.
+2. **Production operations acceptance:** daily encrypted PostgreSQL/private-Blob backups, 30-day off-site retention, separately escrowed recovery keys and hourly monitoring are configured. An artifact retrieved from GitHub has passed independent restoration and existing-account authentication. Assign ongoing monitoring/recovery ownership and agree business recovery/load objectives before committing to an operational SLA; see [OPERATIONS.md](OPERATIONS.md) for the implemented schedule and recovery procedure.
 3. **Optional external services/distribution:** supply the selected statutory/BGV/ERP/signature/SMS contracts and native signing identities when those deployments are required.
 
 The current live review login was deliberately provisioned by the operator at the user's request; deployment does not seed sample companies, transactions or default accounts. Ordinary partner registration requires a working verification sender and human VS approval before transactions.
