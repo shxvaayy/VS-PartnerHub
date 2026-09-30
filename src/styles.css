@@ -223,6 +223,8 @@ select {
 .brand-mark {
   width: 38px;
   height: 38px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 2px #183e3210);
 }
 .brand > span {
   font-size: 19px;
@@ -2368,12 +2370,64 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: #92a178;
+  flex-direction: column;
+  gap: 16px;
+  color: #536b4b;
   font-size: 12px;
+  font-weight: 500;
 }
-.loading-state > svg {
-  color: #789457;
+#root > .loading-state {
+  min-height: 100dvh;
+}
+.brand-loader {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+}
+.brand-loader-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+}
+.brand-loader-track {
+  stroke: #dce7d2;
+  stroke-width: 1.4;
+}
+.brand-loader-inner {
+  stroke: #e5eddd;
+  stroke-width: 0.8;
+}
+.brand-loader-orbit {
+  stroke: #537d3f;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 27 73;
+  transform-origin: center;
+  animation: brand-loader-rotate 1.35s linear infinite;
+}
+.brand-loader-logo {
+  width: 43px;
+  height: 43px;
+  filter: drop-shadow(0 4px 5px #183e321c);
+}
+@keyframes brand-loader-rotate {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader-orbit {
+    animation: none;
+    transform: rotate(-90deg);
+  }
 }
 .empty-state {
   padding: 48px 23px;

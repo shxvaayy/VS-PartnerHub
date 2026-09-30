@@ -5,6 +5,7 @@ import "@fontsource-variable/inter";
 import "./styles.css";
 import "./enterprise.css";
 import "./home.css";
+import "./landing.css";
 import "./auth.css";
 import "./navigation.css";
 import { initializeMobile } from "./lib/mobile";

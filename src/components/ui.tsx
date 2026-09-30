@@ -32,40 +32,32 @@ import {
 import { ApiError } from "../lib/api";
 import { initials } from "../lib/format";
 import { label } from "../../shared/domain";
-import { brandPaths } from "../../shared/brand";
+import { BrandLoader, BrandMark } from "./BrandMark";
 import { normalizeWebAddress, webAddressError } from "../../shared/urls";
 export function Logo({
   light = false,
   compact = false,
+  company = false,
 }: {
   light?: boolean;
   compact?: boolean;
+  company?: boolean;
 }) {
   return (
     <span
-      className={`brand ${light ? "brand-light" : ""}`}
+      className={`brand ${light ? "brand-light" : ""} ${company ? "brand-company" : ""}`}
       role={compact ? "img" : undefined}
       aria-label={compact ? "VS PartnerHub" : undefined}
     >
-      <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
-        <rect width="64" height="64" rx="18" fill="currentColor" />
-        <rect
-          x="1"
-          y="1"
-          width="62"
-          height="62"
-          rx="17"
-          fill="none"
-          stroke={light ? "#173e32" : "#d2efa1"}
-          strokeOpacity=".22"
-        />
-        <path d={brandPaths.v} fill={light ? "#173e32" : "#d2efa1"} />
-        <path d={brandPaths.s} fill={light ? "#2d5945" : "#f7faf3"} />
-      </svg>
+      <BrandMark light={light} />
       {!compact && (
         <span>
           VS <b>PartnerHub</b>
-          <small>BUSINESS, BETTER CONNECTED</small>
+          <small>
+            {company
+              ? "VIJAY SOFTWARE SOLUTIONS"
+              : "BUSINESS, BETTER CONNECTED"}
+          </small>
         </span>
       )}
     </span>
@@ -204,13 +196,13 @@ export function PageHeader({
   );
 }
 export function Loading({
-  label: text = "Loading your workspace…",
+  label: text = "Loading VS PartnerHub…",
 }: {
   label?: string;
 }) {
   return (
     <div className="loading-state" role="status">
-      <LoaderCircle size={24} className="spin" />
+      <BrandLoader />
       <span>{text}</span>
     </div>
   );

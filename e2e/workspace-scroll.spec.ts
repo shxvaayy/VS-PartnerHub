@@ -243,7 +243,7 @@ test.describe("Public workspace scroll tour", () => {
     }
   });
 
-  test("direct tabs, keyboard selection and skip navigation stay synchronized with scrolling", async ({
+  test("direct tabs and keyboard selection stay synchronized with scrolling", async ({
     page,
   }) => {
     const geometry = await tour(page);
@@ -277,8 +277,8 @@ test.describe("Public workspace scroll tour", () => {
       .poll(() => page.evaluate(() => window.scrollY))
       .toBeLessThan(geometry.start + geometry.distance / 9);
     await page
-      .getByRole("link", { name: "Explore the full workflow", exact: true })
-      .click();
+      .locator("#lifecycle .hub-section-heading")
+      .scrollIntoViewIfNeeded();
     await expect(
       page.locator("#lifecycle .hub-section-heading"),
     ).toBeInViewport();
@@ -336,8 +336,8 @@ test.describe("Mobile workspace scroll tour", () => {
           .evaluate((el) => el.getBoundingClientRect().top),
       ).toBeLessThan(geometry.top - 140);
       await page
-        .getByRole("link", { name: "Explore the full workflow", exact: true })
-        .click();
+        .locator("#lifecycle .hub-section-heading")
+        .scrollIntoViewIfNeeded();
       await expect(
         page.locator("#lifecycle .hub-section-heading"),
       ).toBeInViewport();
@@ -478,8 +478,8 @@ test.describe("Mobile workspace scroll tour", () => {
     await expect(recruitment).toHaveAttribute("aria-selected", "true");
     await expect(recruitment).toBeInViewport({ ratio: 0.95 });
     await page
-      .getByRole("link", { name: "Explore the full workflow", exact: true })
-      .tap();
+      .locator("#lifecycle .hub-section-heading")
+      .scrollIntoViewIfNeeded();
     await expect(
       page.locator("#lifecycle .hub-section-heading"),
     ).toBeInViewport();

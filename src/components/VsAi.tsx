@@ -2,47 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { brandPaths } from "../../shared/brand";
 
-export function VsAiMark({
-  hero = false,
-  active = false,
-}: {
-  hero?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <span
-      className={`vs-ai-mark ${hero ? "vs-ai-mark-hero" : ""} ${active ? "vs-ai-mark-active" : ""}`}
-      aria-hidden="true"
-    >
-      <span className="vs-ai-halo" />
-      <svg className="vs-ai-monogram" viewBox="0 0 64 64">
-        <rect width="64" height="64" rx="20" fill="#183f34" />
-        <rect
-          x="1"
-          y="1"
-          width="62"
-          height="62"
-          rx="19"
-          fill="none"
-          stroke="#d2efa1"
-          strokeOpacity=".25"
-        />
-        <path d={brandPaths.v} fill="#d2efa1" />
-        <path d={brandPaths.s} fill="#f7faf3" />
-      </svg>
-      <span className="vs-ai-spark">
-        <svg viewBox="0 0 20 20">
-          <path
-            d="M10 1.5 12.4 7.6 18.5 10 12.4 12.4 10 18.5 7.6 12.4 1.5 10 7.6 7.6Z"
-            fill="currentColor"
-          />
-        </svg>
-      </span>
-    </span>
-  );
-}
+export { VsAiMark } from "./VsAiMark";
 
 // Only a completed, authorized server response is revealed. No synthetic tokens
 // or progress percentages are used while waiting for the actual provider.

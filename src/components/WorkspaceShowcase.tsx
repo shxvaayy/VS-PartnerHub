@@ -7,7 +7,6 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -455,21 +454,6 @@ export function WorkspaceShowcase({
                   }
                 />
               </div>
-              {pinned && (
-                <span className="hub-workspace-scroll-hint">
-                  <ArrowDown size={13} />
-                  {index === organizationTypes.length - 1
-                    ? "Keep exploring"
-                    : "Scroll to explore"}
-                </span>
-              )}
-              <a href="#lifecycle" aria-label="Explore the full workflow">
-                <span className="hub-workspace-skip-desktop">
-                  Explore the full workflow
-                </span>
-                <span className="hub-workspace-skip-mobile">Full workflow</span>
-                <ArrowDown size={14} />
-              </a>
             </div>
           </div>
         </div>

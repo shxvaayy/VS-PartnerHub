@@ -1,14 +1,12 @@
 import { chromium } from "@playwright/test";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { brandPaths } from "../shared/brand.ts";
+import { brandSvg } from "../shared/brand.ts";
 
 // Use the same VS mark as public/favicon.svg for every native asset.
-const browser = await chromium.launch({
-  ...(process.env.CI ? {} : { channel: "chrome" }),
-});
+const browser = await chromium.launch();
 const page = await browser.newPage();
-const mark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="#173e32"/><rect x="1" y="1" width="62" height="62" rx="17" fill="none" stroke="#d2efa1" stroke-opacity=".22"/><path d="${brandPaths.v}" fill="#d2efa1"/><path d="${brandPaths.s}" fill="#f7faf3"/></svg>`;
+const mark = brandSvg();
 async function render(file, width, height, mode = "icon") {
   const size =
     mode === "splash"

@@ -17,14 +17,14 @@ import {
   Layers3,
   LockKeyhole,
   Menu,
-  Package,
+  MessageSquareText,
   Search,
   ShieldCheck,
   Sparkles,
   Truck,
   UsersRound,
+  UserCheck,
   Wallet,
-  Workflow,
   X,
 } from "lucide-react";
 import { Avatar, Logo } from "../components/ui";
@@ -37,6 +37,9 @@ import {
 } from "../../shared/domain";
 import { organizationIcons } from "../components/icons";
 import { WorkspaceShowcase } from "../components/WorkspaceShowcase";
+import { ConnectedWorkspace } from "../components/ConnectedWorkspace";
+import { PublicDesktopNav } from "../components/PublicDesktopNav";
+import { VsAiMark } from "../components/VsAiMark";
 
 function tabKeys(event: KeyboardEvent<HTMLElement>) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -67,22 +70,9 @@ export function PublicHeader() {
       </a>
       <nav className="public-nav" aria-label="Public navigation">
         <Link to="/" aria-label="VS PartnerHub home">
-          <Logo />
+          <Logo company />
         </Link>
-        <div className="hub-nav-links">
-          <a href="/#platform" onClick={() => setOpen(false)}>
-            Platform
-          </a>
-          <a href="/#workspaces" onClick={() => setOpen(false)}>
-            Who it’s for
-          </a>
-          <Link to="/partners" onClick={() => setOpen(false)}>
-            Partner network
-          </Link>
-          <Link to="/contact" onClick={() => setOpen(false)}>
-            Contact
-          </Link>
-        </div>
+        <PublicDesktopNav />
         <div className="public-nav-actions">
           {!user && (
             <Link className="hub-signin" to="/login">
@@ -177,7 +167,7 @@ function PublicMobileMenu({ onClose }: { onClose: () => void }) {
       <div className="hub-drawer-shell">
         <div className="hub-drawer-top">
           <Link to="/" onClick={onClose} aria-label="VS PartnerHub home">
-            <Logo />
+            <Logo company />
           </Link>
           <button
             className="hub-drawer-close"
@@ -631,29 +621,8 @@ export default function Home() {
       preference.removeEventListener("change", start);
     };
   }, []);
-  const [stage, setStage] = useState(0),
-    [track, setTrack] = useState(0);
+  const [stage, setStage] = useState(0);
   const step = lifecycle[stage];
-  const tracks = [
-    {
-      label: "Source & procure",
-      Icon: Package,
-      cards: ["Requirement", "Quotation", "Approved order"],
-      copy: "A connected path from business need to commitment.",
-    },
-    {
-      label: "Recruit & deploy",
-      Icon: UsersRound,
-      cards: ["Hiring need", "Candidate", "Joining"],
-      copy: "Keep the people, partners and next steps together.",
-    },
-    {
-      label: "Deliver & grow",
-      Icon: Workflow,
-      cards: ["Agreement", "Milestone", "Payment"],
-      copy: "Bring delivery and commercial visibility into one place.",
-    },
-  ];
   return (
     <div className="hub-home" ref={root}>
       <PublicHeader />
@@ -662,28 +631,27 @@ export default function Home() {
           <div className="hub-hero-copy">
             <span className="hub-eyebrow">
               <i />
-              THE BUSINESS OF BETTER PARTNERSHIPS
+              ENTERPRISE PARTNER OPERATIONS
             </span>
             <h1>
-              Your partners.
+              Your partner network.
               <br />
-              Your possibilities.
-              <br />
-              <em>One platform.</em>
+              <em>Working as one.</em>
             </h1>
             <p>
-              Bring your business network together. Onboard the right partners,
-              move procurement forward and connect great talent to opportunity.
+              Bring the companies you buy from, sell to and grow with into one
+              connected workspace. From verified onboarding to procurement,
+              talent and payments—keep business moving together.
             </p>
             <div className="hub-hero-actions">
               <Link
                 className="button button-primary button-large"
                 to="/register"
               >
-                Build your next partnership <ArrowUpRight size={18} />
+                Become a VS partner <ArrowUpRight size={18} />
               </Link>
               <a href="#platform" className="hub-text-link">
-                Explore the platform <ArrowDown size={16} />
+                Discover the platform <ArrowDown size={16} />
               </a>
             </div>
             <div className="hub-hero-note">
@@ -691,93 +659,7 @@ export default function Home() {
               <span>Verified identities. Purpose-built workspaces.</span>
             </div>
           </div>
-          <div className="hub-network">
-            <div className="hub-network-heading">
-              <span>
-                <i />
-                THE CONNECTED WORKSPACE
-              </span>
-              <Layers3 size={17} />
-            </div>
-            <div className="hub-identity">
-              <div className="hub-identity-logo">
-                <Logo compact />
-              </div>
-              <div>
-                <span>ONE SHARED BUSINESS IDENTITY</span>
-                <h2>Connected by trust.</h2>
-              </div>
-              <ShieldCheck size={29} />
-            </div>
-            <div className="hub-network-line">
-              <i />
-              <span />
-              <i />
-            </div>
-            <div
-              className="hub-network-tabs"
-              role="tablist"
-              onKeyDown={tabKeys}
-              aria-label="Explore business workflows"
-            >
-              {tracks.map((t, i) => (
-                <button
-                  key={t.label}
-                  type="button"
-                  role="tab"
-                  tabIndex={track === i ? 0 : -1}
-                  aria-selected={track === i}
-                  aria-controls={`track-panel-${i}`}
-                  id={`track-tab-${i}`}
-                  className={track === i ? "active" : ""}
-                  onClick={() => setTrack(i)}
-                >
-                  <t.Icon size={21} />
-                  <span>{t.label}</span>
-                </button>
-              ))}
-            </div>
-            <div
-              className="hub-track-panel"
-              role="tabpanel"
-              tabIndex={0}
-              id={`track-panel-${track}`}
-              aria-labelledby={`track-tab-${track}`}
-            >
-              <div className="hub-track-label">
-                <span>YOUR WORKFLOW, CONNECTED</span>
-                <ArrowUpRight size={15} />
-              </div>
-              <div className="hub-track-stages">
-                {tracks[track].cards.map((title, i) => (
-                  <div key={title}>
-                    <span>{String(i + 1).padStart(2, "0")}</span>
-                    <strong>{title}</strong>
-                    {i < 2 ? (
-                      <ChevronRight size={16} />
-                    ) : (
-                      <CircleCheck size={17} />
-                    )}
-                  </div>
-                ))}
-              </div>
-              <p>{tracks[track].copy}</p>
-            </div>
-            <div className="hub-network-bottom">
-              <span>
-                <LockKeyhole size={14} /> Access follows your role
-              </span>
-              <span>
-                <Sparkles size={14} /> VS AI intelligence
-              </span>
-            </div>
-            <div className="hub-network-tag">
-              <Fingerprint size={19} />
-              <span>
-                One organization.<strong>Every connection.</strong>
-              </span>
-            </div>
-          </div>
+          <ConnectedWorkspace />
         </section>
         <section
           className="hub-platform-scale"
@@ -785,11 +667,6 @@ export default function Home() {
         >
           <div className="hub-scale-intro">
             <span className="hub-eyebrow">BUILT FOR THE WHOLE BUSINESS</span>
-            <p>
-              One platform.
-              <br />
-              <strong>Room for every partnership.</strong>
-            </p>
           </div>
           <div className="hub-platform-metrics">
             <PlatformMetric
@@ -815,37 +692,16 @@ export default function Home() {
             />
           </div>
         </section>
-        <div className="hub-discipline-strip">
-          <span>
-            BUILT AROUND
-            <br />
-            <strong>the way you do business.</strong>
-          </span>
-          {[
-            [Package, "Procurement"],
-            [Truck, "Supplier operations"],
-            [UsersRound, "Talent partnerships"],
-            [ShieldCheck, "Compliance & finance"],
-          ].map(([Icon, title]) => {
-            const I = Icon as typeof Package;
-            return (
-              <div key={String(title)}>
-                <I size={22} />
-                <span>{String(title)}</span>
-              </div>
-            );
-          })}
-        </div>
         <section className="hub-section hub-platform" id="platform">
           <div className="hub-section-heading">
             <div>
               <span className="hub-eyebrow">
-                LESS FRAGMENTATION. MORE MOMENTUM.
+                A SHARED FOUNDATION FOR BETTER BUSINESS
               </span>
               <h2>
-                Business moves better
+                The right connections.
                 <br />
-                when everyone is connected.
+                The complete picture.
               </h2>
             </div>
             <p>
@@ -858,14 +714,17 @@ export default function Home() {
               <div className="hub-feature-art">
                 <span>
                   <Building2 size={28} />
+                  <small>Company</small>
                 </span>
                 <i />
                 <span>
                   <Handshake size={28} />
+                  <small>Connect</small>
                 </span>
                 <i />
                 <span>
                   <ShieldCheck size={28} />
+                  <small>Verify</small>
                 </span>
               </div>
               <span className="hub-card-kicker">01 / PARTNER FOUNDATION</span>
@@ -884,9 +743,22 @@ export default function Home() {
               </Link>
             </article>
             <article>
-              <span className="hub-feature-icon">
-                <Workflow size={25} />
-              </span>
+              <div className="hub-feature-art">
+                <span>
+                  <FileText size={25} />
+                  <small>Requirement</small>
+                </span>
+                <i />
+                <span>
+                  <GitCompareArrows size={25} />
+                  <small>Quotation</small>
+                </span>
+                <i />
+                <span>
+                  <FileCheck2 size={25} />
+                  <small>Order</small>
+                </span>
+              </div>
               <span className="hub-card-kicker">02 / CONNECTED OPERATIONS</span>
               <h3>
                 Keep the work
@@ -903,9 +775,22 @@ export default function Home() {
               </a>
             </article>
             <article>
-              <span className="hub-feature-icon violet">
-                <UsersRound size={25} />
-              </span>
+              <div className="hub-feature-art">
+                <span>
+                  <UsersRound size={25} />
+                  <small>Candidate</small>
+                </span>
+                <i />
+                <span>
+                  <MessageSquareText size={25} />
+                  <small>Interview</small>
+                </span>
+                <i />
+                <span>
+                  <UserCheck size={25} />
+                  <small>Joining</small>
+                </span>
+              </div>
               <span className="hub-card-kicker">03 / TALENT COLLABORATION</span>
               <h3>
                 Great people.
@@ -991,10 +876,10 @@ export default function Home() {
             </ul>
           </div>
         </section>
-        <section className="hub-ai">
+        <section className="hub-ai" id="intelligence">
           <div className="hub-ai-copy">
             <span className="hub-ai-badge">
-              <Sparkles size={15} /> MEET VS AI · YOUR WORKSPACE ASSISTANT
+              <VsAiMark /> INTELLIGENCE, BUILT INTO YOUR WORKSPACE
             </span>
             <h2>
               A clearer view.
@@ -1015,6 +900,12 @@ export default function Home() {
           </div>
           <div className="hub-ai-tools">
             {[
+              {
+                Icon: MessageSquareText,
+                title: "Your workspace, explained",
+                copy: "Get answers grounded in the records you can access.",
+                mode: "assistant",
+              },
               {
                 Icon: FileText,
                 title: "Shape your next requirement",
@@ -1039,8 +930,19 @@ export default function Home() {
                 copy: "Extract readable text and fields for your review.",
                 mode: "document",
               },
+              {
+                Icon: ShieldCheck,
+                title: "Stay ahead of the next action",
+                copy: "Understand upcoming expiries, delays and outstanding work.",
+                mode: "alerts",
+              },
             ].map((t) => (
-              <Link key={t.mode} to={`/app/ai?mode=${t.mode}`}>
+              <Link
+                key={t.mode}
+                to={
+                  t.mode === "assistant" ? "/app/ai" : `/app/ai?mode=${t.mode}`
+                }
+              >
                 <span>
                   <t.Icon size={22} />
                 </span>
@@ -1053,7 +955,7 @@ export default function Home() {
             ))}
           </div>
         </section>
-        <section className="hub-section hub-trust">
+        <section className="hub-section hub-trust" id="trust">
           <div>
             <span className="hub-eyebrow">
               CONFIDENCE IS PART OF THE WORKFLOW
