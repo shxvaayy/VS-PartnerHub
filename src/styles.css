@@ -1599,6 +1599,10 @@ select {
   outline: 2px solid var(--green);
   outline-offset: -2px;
 }
+.workflow-strip:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -2572,6 +2576,8 @@ select {
 }
 .notice-banner > div {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .notice-banner strong {
   color: #ac945c;
@@ -2934,6 +2940,13 @@ select {
 .action-menu > summary {
   list-style: none;
   cursor: pointer;
+  min-height: 44px;
+}
+.action-menu > summary > svg:last-child {
+  transition: transform 160ms ease;
+}
+.action-menu[open] > summary > svg:last-child {
+  transform: rotate(180deg);
 }
 .action-menu > summary::-webkit-details-marker {
   display: none;
@@ -2949,23 +2962,60 @@ select {
   border-radius: 8px;
   box-shadow: 0 10px 28px #24432314;
   padding: 6px;
+  overflow-y: auto;
+  scroll-padding-block: 6px;
+  overscroll-behavior: contain;
+  animation: action-menu-enter 160ms ease-out;
 }
 .action-menu > div > button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  min-height: 44px;
   gap: 15px;
   padding: 11px 12px;
   text-align: left;
   border: 0;
   background: transparent;
-  font-size: 12px;
-  color: #8ba36e;
+  font-size: 13px;
+  color: var(--ink);
   border-radius: 5px;
 }
-.action-menu > div > button:hover {
-  background: #f1f7e6;
+.action-menu > div > button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.action-menu > div > button > svg {
+  flex-shrink: 0;
+  color: var(--green);
+}
+.action-menu > div > button:hover,
+.action-menu > div > button:focus-visible {
+  background: #edf4ed;
+  color: var(--green);
+}
+.action-menu > div > button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+@keyframes action-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-menu > div {
+    animation: none;
+  }
+  .action-menu > summary > svg:last-child {
+    transition: none;
+  }
 }
 .renewal-card {
   display: flex;
@@ -3556,11 +3606,15 @@ select {
   margin-bottom: 22px;
   overflow: hidden;
 }
+.company-hero:has(.action-menu[open]) {
+  overflow: visible;
+}
 .company-hero-pattern {
   height: 93px;
   background: radial-gradient(ellipse at 60% 40%, #e9f0db, #f3f7e9);
   position: relative;
   overflow: hidden;
+  border-radius: 11px 11px 0 0;
 }
 .company-hero-pattern:before,
 .company-hero-pattern:after {
@@ -3621,7 +3675,7 @@ select {
   display: flex;
   gap: 14px;
   font-size: 12px;
-  color: #b5c59d;
+  color: var(--muted);
   margin-top: 11px;
 }
 .company-hero-actions {
@@ -3730,7 +3784,7 @@ select {
   margin-bottom: 13px;
 }
 .verified-note h3 {
-  color: #95ae77;
+  color: var(--green);
   font-size: 14px;
 }
 .verified-note p {
@@ -5559,17 +5613,21 @@ select {
   color: #739154;
 }
 .notice-banner strong {
-  color: #9b813f;
+  color: #604920;
 }
 .notice-banner span,
-.notice-banner p {
-  color: #a58e60;
+.notice-banner p,
+.notice-banner > a {
+  color: #70572b;
+}
+.notice-banner > svg {
+  color: #856827;
 }
 .info-banner p {
   color: #616b50;
 }
 .company-title h1 {
-  color: #668551;
+  color: var(--ink);
 }
 .company-hero-pattern {
   height: 88px;
@@ -6510,7 +6568,7 @@ select {
   }
   .page-actions > .button,
   .page-actions > .action-menu > summary {
-    min-height: 35px;
+    min-height: 44px;
     font-size: 12px;
     padding: 9px 12px;
   }
@@ -7030,7 +7088,7 @@ select {
   .company-hero-actions > .button,
   .company-hero-actions > .action-menu > summary {
     font-size: 12px;
-    min-height: 35px;
+    min-height: 44px;
   }
   .profile-sidebar {
     gap: 15px;

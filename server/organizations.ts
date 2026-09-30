@@ -87,24 +87,23 @@ const fullProfileAccess = (user: SessionUser, org: Organization) =>
     (can(user, "verification") ||
       can(user, "documents") ||
       user.role === "super_admin"));
-organizationsRouter.get("/", async (req, res) => {
-  assert(
-    can(req.user, "organizations") || can(req.user, "discovery"),
-    403,
-    "Your role cannot browse the organization directory.",
-  );
-  if (!req.user.internal) assertActive(req.user);
-  const p = pagination.parse(req.query);
-  const type = z.string().max(50).optional().parse(req.query.type);
-  const location = z.string().max(150).optional().parse(req.query.location);
+// Lists and exports must select the same partners for the same filters. This
+// deliberately searches only public business fields, never KYC JSON values.
+export function organizationSearch(
+  user: SessionUser,
+  input: Record<string, unknown>,
+) {
+  const p = pagination.parse(input);
+  const type = z.string().max(50).optional().parse(input.type);
+  const location = z.string().trim().max(150).optional().parse(input.location);
   const certification = z
     .string()
+    .trim()
     .max(150)
     .optional()
-    .parse(req.query.certification);
+    .parse(input.certification);
   const q = db("organizations").whereNot("id", INTERNAL_ORG_ID);
-  if (!req.user.internal || req.query.discovery === "true")
-    q.where("status", "active");
+  if (!user.internal || input.discovery === "true") q.where("status", "active");
   if (p.q)
     q.where((b) => {
       b.whereILike("legal_name", `%${p.q}%`)
@@ -117,7 +116,10 @@ organizationsRouter.get("/", async (req, res) => {
   if (p.category) q.where("industry", p.category);
   if (location)
     q.where((b) => {
-      b.whereILike("city", `%${location}%`);
+      b.whereILike("city", `%${location}%`).orWhereILike(
+        "country",
+        `%${location}%`,
+      );
       searchPublicDetails(b, location, ["locations", "delivery_locations"]);
     });
   if (certification)
@@ -126,15 +128,26 @@ organizationsRouter.get("/", async (req, res) => {
     technology: "technologies",
     product: "products",
     service: "services",
+    capability: "capabilities",
     naics: "naics",
     sic: "sic",
     business_type: "company_type",
   })) {
-    if (req.query[parameter]) {
-      const value = z.string().trim().max(150).parse(req.query[parameter]);
+    if (input[parameter]) {
+      const value = z.string().trim().max(150).parse(input[parameter]);
       q.where((b) => searchPublicDetails(b, value, [key]));
     }
   }
+  return { q, p };
+}
+organizationsRouter.get("/", async (req, res) => {
+  assert(
+    can(req.user, "organizations") || can(req.user, "discovery"),
+    403,
+    "Your role cannot browse the organization directory.",
+  );
+  if (!req.user.internal) assertActive(req.user);
+  const { q, p } = organizationSearch(req.user, req.query);
   const count = await q.clone().count({ count: "*" }).first();
   const rows = await q
     .orderBy("created_at", "desc")

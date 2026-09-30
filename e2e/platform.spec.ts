@@ -185,6 +185,14 @@ test("recruitment onboarding, document review and VS approval work through the b
   await modal(page).locator('button[type="submit"]').click();
   await expect(modal(page)).toBeHidden();
   await expect(page.locator(".company-title .badge")).toHaveText(/Active/);
+  await page
+    .getByRole("button", { name: "Company overview", exact: true })
+    .click();
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect(page.locator(".notice-banner")).toContainText(
+    "Identity and company documents reviewed.",
+  );
+  await inspectAccessibility(page);
 });
 
 test("buyer and vendor complete requirement to delivery, invoice and payment", async ({

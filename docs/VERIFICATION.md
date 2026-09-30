@@ -1,5 +1,26 @@
 # Verification evidence
 
+## Workspace review — 30 September 2026
+
+The current review corrects directory exports that ignored location/business filters, stale search values after browser Back, lost list context in profile/record Back links, and clipped status/verification menus on phones. Directory filters and layout, plus recruitment pipeline selection, survive reloads. Workflow stages and commercial tables support keyboard scrolling in Chrome and Safari. Company headings, reference metadata and verification notes now use readable contrast.
+
+| Executed check                     | Result           | Scope                                                                                                                                      |
+| ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| SQLite automated suite             | 152 / 152 passed | All API/workflow/security checks, including matching filtered directory exports and private-KYC exclusion                                  |
+| PostgreSQL automated suite         | 152 / 152 passed | The same suite against an isolated PostgreSQL cluster                                                                                      |
+| Complete browser acceptance        | 52 / 52 passed   | All workflows, AI interfaces, reporting/export, public navigation, mobile scrolling and workspace regressions; no retries or skipped tests |
+| Chrome/Safari workspace regression | 14 / 14 passed   | Search history, directory CSV, profile/record Back links, pipeline layout, action menus, keyboard scrolling, focus and cancellation        |
+| Narrow-screen layout audit         | 104 / 104 passed | 35 workspace routes at 320/390px, plus 17 create forms and 17 detail views at 320px; no browser errors or escaped controls                 |
+| Verification-note regression       | 2 / 2 passed     | Real onboarding/document approval followed by mobile accessibility; organization menu behavior after approval                              |
+
+The complete browser run initially revealed low contrast in a newly approved company's verification note. Extending the onboarding check also exposed unreadable company reference/date text when the action menu was closed. Both were fixed, and the regression now exercises the actual persisted approval state. The final complete browser run passed all 52 scenarios. TypeScript and formatting checks passed, and the production build/runtime passed all eight checks, including secure sessions, restart persistence and backup restore. Evidence is retained under `artifacts/workspace-audit/`, including the original failure separately from successful reruns.
+
+Live email-provider setup was explicitly deferred by the user. Authentication and delivery implementation remain covered by the existing isolated tests; no current result represents external email receipt. See [DELIVERY_STATUS.md](DELIVERY_STATUS.md) for remaining external integrations and operational acceptance.
+
+## Earlier acceptance snapshot
+
+The following results retain their original execution scope and timestamps. They are not all fresh reruns of the current release; current counts above supersede only the explicitly rerun suites.
+
 Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLite and an isolated PostgreSQL cluster. Tests used disposable databases and explicitly labelled QA files. The working database and uploads remain separate at `http://localhost:5173`.
 
 | Check                                       | Result                                                                                                                                                     |

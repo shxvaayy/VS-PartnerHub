@@ -3,6 +3,7 @@ import supertest from "supertest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { parse as parseCsv } from "csv-parse/sync";
 import { demoAccounts, demoPassword } from "../shared/demo.js";
 import {
   organizationTypes,
@@ -444,6 +445,118 @@ describe("authentication and organization isolation", () => {
       await db("organizations")
         .where({ id: vendor.id })
         .update({ details: vendor.details });
+    }
+  });
+  it("exports exactly the directory filters, including public capabilities and business identifiers", async () => {
+    const vendor = await db("organizations")
+      .where({ id: org("vendor") })
+      .first();
+    const details = JSON.parse(vendor.details);
+    await db("organizations")
+      .where({ id: vendor.id })
+      .update({
+        trade_name: "Directory QA Trade Alias",
+        industry: "Manufacturing",
+        country: "Directory QA Country",
+        details: JSON.stringify({
+          ...details,
+          locations: "Directory QA Coverage",
+          delivery_locations: "Directory QA Delivery",
+          certifications: "Directory QA Certificate",
+          technologies: "Directory QA Technology",
+          products: "Directory QA Product",
+          services: "Directory QA Service",
+          capabilities: "Directory QA Capability",
+          naics: "334513",
+          sic: "3823",
+          company_type: "Directory QA Business Type",
+          verification_note: "Directory QA Private KYC",
+        }),
+      });
+    const filters = [
+      { q: "directory qa trade alias" },
+      { location: vendor.city },
+      { location: "Directory QA Country" },
+      { location: "Directory QA Coverage" },
+      { location: "Directory QA Delivery" },
+      { category: "Manufacturing" },
+      { certification: "Directory QA Certificate" },
+      { technology: "Directory QA Technology" },
+      { product: "Directory QA Product" },
+      { service: "Directory QA Service" },
+      { capability: "Directory QA Capability" },
+      { naics: "334513" },
+      { sic: "3823" },
+      { business_type: "Directory QA Business Type" },
+      {
+        type: "vendor",
+        status: "active",
+        location: vendor.city,
+        capability: "Directory QA Capability",
+      },
+    ];
+    try {
+      for (const filter of filters) {
+        const query = new URLSearchParams(
+          filter as Record<string, string>,
+        ).toString();
+        const list = await get("admin", `/organizations?limit=100&${query}`);
+        expect(
+          list.items.map((row: any) => row.id),
+          query,
+        ).toContain(vendor.id);
+        const response = await clients.admin.agent.get(
+          `/api/admin/organizations-export?limit=1&page=2&${query}`,
+        );
+        expect(response.status, response.text).toBe(200);
+        const exported = parseCsv(response.text, { columns: true, bom: true });
+        expect(exported.map((row: any) => row.Reference).sort(), query).toEqual(
+          list.items.map((row: any) => row.number).sort(),
+        );
+        expect(response.text).not.toContain("Directory QA Private KYC");
+      }
+      for (const filter of [
+        { q: "Directory QA Private KYC" },
+        { capability: "Directory QA Private KYC" },
+        {
+          capability: "Directory QA Capability",
+          location: "No matching location",
+        },
+      ]) {
+        const query = new URLSearchParams(
+          filter as Record<string, string>,
+        ).toString();
+        expect((await get("admin", `/organizations?${query}`)).total).toBe(0);
+        const response = await clients.admin.agent.get(
+          `/api/admin/organizations-export?${query}`,
+        );
+        expect(response.status).toBe(200);
+        expect(parseCsv(response.text, { columns: true, bom: true })).toEqual(
+          [],
+        );
+      }
+      const discovered = await get(
+        "buyer",
+        "/organizations?discovery=true&capability=Directory%20QA%20Capability",
+      );
+      expect(discovered.items.map((row: any) => row.id)).toEqual([vendor.id]);
+      expect(discovered.items[0].details.verification_note).toBeUndefined();
+      await get(
+        "buyer",
+        "/admin/organizations-export?capability=Directory%20QA%20Capability",
+        403,
+      );
+      for (const route of ["/organizations", "/admin/organizations-export"]) {
+        await get("admin", `${route}?capability=${"x".repeat(151)}`, 422);
+        await get("admin", `${route}?location=one&location=two`, 422);
+      }
+    } finally {
+      await db("organizations").where({ id: vendor.id }).update({
+        trade_name: vendor.trade_name,
+        industry: vendor.industry,
+        country: vendor.country,
+        details: vendor.details,
+      });
     }
   });
   it("prevents external organizations from escalating a colleague to a VS role", async () => {

@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -20,9 +25,12 @@ import {
   ShieldCheck,
   Sparkles,
   UsersRound,
+  X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { listReturnPath } from "../lib/navigation";
 import { api, queryString, useApi } from "../lib/api";
 import {
   Avatar,
@@ -56,6 +64,18 @@ import {
 } from "../../shared/domain";
 import Documents from "./Documents";
 import { ContactsPanel } from "../components/PartnerOperations";
+import ActionMenu from "../components/ActionMenu";
+
+const advancedFilters = [
+  ["capability", "Capabilities"],
+  ["technology", "Technology"],
+  ["product", "Products"],
+  ["service", "Services"],
+  ["naics", "NAICS"],
+  ["sic", "SIC"],
+  ["business_type", "Business type"],
+] as const;
+
 export default function Organizations({
   discovery = false,
   verification = false,
@@ -64,26 +84,63 @@ export default function Organizations({
   verification?: boolean;
 }) {
   const [params, setParams] = useSearchParams(),
-    { user } = useAuth(),
-    [query, setQuery] = useState(""),
-    [layout, setLayout] = useState(discovery ? "grid" : "list");
-  const type = params.get("type") || "",
+    route = useLocation(),
+    { user } = useAuth();
+  const returnState = { returnTo: `${route.pathname}${route.search}` };
+  const query = params.get("q") || "",
+    layout = ["grid", "list"].includes(params.get("view") || "")
+      ? params.get("view")!
+      : discovery
+        ? "grid"
+        : "list",
+    type = params.get("type") || "",
     status = params.get("status") || (verification ? "under_review" : ""),
     page = Number(params.get("page") || 1),
-    [location, setLocation] = useState(""),
-    [industry, setIndustry] = useState(""),
-    [certification, setCertification] = useState("");
-  const [advanced, setAdvanced] = useState<Record<string, string>>({});
-  const masterData = useApi<any>("/master-data");
-  const result = useApi<any>(
-    `/organizations?${queryString({ type, status, q: query, page, location, category: industry, certification, discovery, ...advanced })}`,
+    location = params.get("location") || "",
+    industry = params.get("category") || "",
+    certification = params.get("certification") || "";
+  const advanced = Object.fromEntries(
+    advancedFilters.map(([key]) => [key, params.get(key) || ""]),
   );
-  const update = (key: string, value: string) => {
+  const filters = queryString({
+    type,
+    status,
+    q: query,
+    page,
+    location,
+    category: industry,
+    certification,
+    discovery,
+    ...advanced,
+  });
+  const settledFilters = useDebouncedValue(
+    filters,
+    discovery ? "discovery" : verification ? "verification" : "directory",
+  );
+  const updating = filters !== settledFilters;
+  const masterData = useApi<any>("/master-data");
+  const result = useApi<any>(`/organizations?${settledFilters}`);
+  const update = (key: string, value: string, replace = false) => {
     const p = new URLSearchParams(params);
     value ? p.set(key, value) : p.delete(key);
-    if (key !== "page") p.delete("page");
-    setParams(p);
+    if (key !== "page" && key !== "view") p.delete("page");
+    setParams(p, { replace });
   };
+  const selectedFilters = [
+    ["q", "Search", query],
+    [
+      "type",
+      "Partner type",
+      type ? organizationLabels[type as OrganizationType] || type : "",
+    ],
+    ["status", "Status", params.get("status") ? label(status) : ""],
+    ["category", "Industry", industry],
+    ["location", "Location", location],
+    ["certification", "Certification", certification],
+    ...advancedFilters.map(([key, title]) => [key, title, advanced[key]]),
+  ].filter(([, , value]) => value);
+  const clearFilters = () =>
+    setParams(params.has("view") ? { view: layout } : {});
   return (
     <div>
       <PageHeader
@@ -111,7 +168,7 @@ export default function Organizations({
       >
         {!discovery && (
           <a
-            href={`/api/admin/organizations-export?${queryString({ type, status, q: query })}`}
+            href={`/api/admin/organizations-export?${filters}`}
             className="button button-secondary"
           >
             <Download size={16} />
@@ -191,10 +248,7 @@ export default function Organizations({
           <SearchInput
             placeholder="Search companies, products, expertise, NAICS or SIC…"
             value={query}
-            onChange={(v) => {
-              setQuery(v);
-              update("page", "1");
-            }}
+            onChange={(v) => update("q", v, true)}
           />
           <div className="directory-filter-row">
             <select
@@ -214,10 +268,7 @@ export default function Organizations({
               className="compact-select"
               aria-label="Industry"
               value={industry}
-              onChange={(e) => {
-                setIndustry(e.target.value);
-                update("page", "1");
-              }}
+              onChange={(e) => update("category", e.target.value)}
             >
               <option value="">All industries</option>
               {(
@@ -231,20 +282,16 @@ export default function Organizations({
               aria-label="Location filter"
               placeholder="Location"
               value={location}
-              onChange={(e) => {
-                setLocation(e.target.value);
-                update("page", "1");
-              }}
+              onChange={(e) => update("location", e.target.value, true)}
+              maxLength={150}
             />
             <Input
               aria-label="Certification filter"
               list="discovery-certifications"
               placeholder="Certification"
               value={certification}
-              onChange={(e) => {
-                setCertification(e.target.value);
-                update("page", "1");
-              }}
+              onChange={(e) => update("certification", e.target.value, true)}
+              maxLength={150}
             />
             <datalist id="discovery-certifications">
               {masterData.data?.certification?.map((c: any) => (
@@ -278,14 +325,14 @@ export default function Organizations({
               <button
                 className={layout === "list" ? "selected" : ""}
                 aria-label="Directory list view"
-                onClick={() => setLayout("list")}
+                onClick={() => update("view", "list")}
               >
                 <LayoutList size={17} />
               </button>
               <button
                 className={layout === "grid" ? "selected" : ""}
                 aria-label="Directory grid view"
-                onClick={() => setLayout("grid")}
+                onClick={() => update("view", "grid")}
               >
                 <Grid2X2 size={17} />
               </button>
@@ -293,30 +340,55 @@ export default function Organizations({
           </div>
         </div>
         <details className="discovery-advanced">
-          <summary>Technology, products and business identifiers</summary>
+          <summary>Capabilities, technology and business identifiers</summary>
           <div className="form-grid">
-            {[
-              ["technology", "Technology"],
-              ["product", "Products"],
-              ["service", "Services"],
-              ["naics", "NAICS"],
-              ["sic", "SIC"],
-              ["business_type", "Business type"],
-            ].map(([key, title]) => (
+            {advancedFilters.map(([key, title]) => (
               <Field key={key} label={title}>
                 <Input
                   value={advanced[key] || ""}
-                  onChange={(e) => {
-                    setAdvanced((v) => ({ ...v, [key]: e.target.value }));
-                    update("page", "1");
-                  }}
+                  onChange={(e) => update(key, e.target.value, true)}
                   maxLength={150}
                 />
               </Field>
             ))}
           </div>
         </details>
-        {result.isPending ? (
+        <div className="directory-results">
+          <span role="status">
+            {result.isPending || updating
+              ? "Updating results…"
+              : result.data
+                ? `${new Intl.NumberFormat("en-IN").format(result.data.total)} ${result.data.total === 1 ? "organization" : "organizations"}${selectedFilters.length ? (result.data.total === 1 ? " matches your filters" : " match your filters") : " in your directory"}`
+                : "Organization directory"}
+          </span>
+          {selectedFilters.length > 0 && (
+            <Button variant="ghost" onClick={clearFilters}>
+              Clear all filters
+            </Button>
+          )}
+          {selectedFilters.length > 0 && (
+            <div
+              className="directory-active-filters"
+              role="group"
+              aria-label="Active directory filters"
+            >
+              {selectedFilters.map(([key, title, value]) => (
+                <button
+                  key={key}
+                  className="directory-filter-chip"
+                  aria-label={`Remove ${title.toLowerCase()} filter`}
+                  onClick={() => update(key, "")}
+                >
+                  <span>
+                    <strong>{title}:</strong> {value}
+                  </span>
+                  <X size={14} aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {result.isPending || updating ? (
           <Loading />
         ) : result.error ? (
           <ErrorState error={result.error} retry={() => result.refetch()} />
@@ -324,7 +396,13 @@ export default function Organizations({
           <EmptyState
             title="Your next connection is out there"
             description="Try widening your search or adjusting the filters."
-          />
+          >
+            {selectedFilters.length > 0 && (
+              <Button variant="secondary" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </EmptyState>
         ) : layout === "grid" ? (
           <div className="organization-grid">
             {result.data.items.map((o: Organization) => (
@@ -337,7 +415,7 @@ export default function Organizations({
                   />
                   <Badge status={o.status} />
                 </div>
-                <Link to={`/app/organizations/${o.id}`}>
+                <Link to={`/app/organizations/${o.id}`} state={returnState}>
                   <h3>{o.legal_name}</h3>
                 </Link>
                 <span className="organization-card-type">
@@ -369,7 +447,10 @@ export default function Organizations({
                     <MapPin size={14} />
                     {o.city}
                   </span>
-                  <TextLink to={`/app/organizations/${o.id}`}>
+                  <TextLink
+                    to={`/app/organizations/${o.id}`}
+                    state={returnState}
+                  >
                     View profile
                   </TextLink>
                 </div>
@@ -397,6 +478,7 @@ export default function Organizations({
                       <Link
                         className="identity-cell"
                         to={`/app/organizations/${o.id}`}
+                        state={returnState}
                       >
                         <Avatar name={o.legal_name} />
                         <div>
@@ -417,6 +499,7 @@ export default function Organizations({
                     <td>
                       <Link
                         to={`/app/organizations/${o.id}`}
+                        state={returnState}
                         className="button button-ghost"
                       >
                         {verification ? "Review" : "View"}
@@ -442,6 +525,7 @@ export default function Organizations({
 }
 export function OrganizationProfile({ own = false }: { own?: boolean }) {
   const { id: paramId } = useParams(),
+    route = useLocation(),
     { user, refresh } = useAuth(),
     id = own ? user!.organization_id : paramId,
     toast = useToast(),
@@ -453,6 +537,16 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
     [note, setNote] = useState(""),
     [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false);
+  const returnTo = listReturnPath(route.state, "/app/organizations", [
+    "/app/organizations",
+    "/app/discovery",
+    "/app/verification",
+  ]);
+  const returnLabel = returnTo.startsWith("/app/verification")
+    ? "Verification center"
+    : returnTo.startsWith("/app/discovery")
+      ? "Discover partners"
+      : "Partner directory";
   if (!id)
     return (
       <EmptyState
@@ -501,11 +595,7 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
   ].filter(Boolean).length;
   return (
     <div>
-      {!own && (
-        <BackLink to={canReview ? "/app/verification" : "/app/organizations"}>
-          {canReview ? "Verification center" : "Partner directory"}
-        </BackLink>
-      )}
+      {!own && <BackLink to={returnTo}>{returnLabel}</BackLink>}
       <div className="company-hero">
         <div className="company-hero-pattern" />
         <div className="company-hero-body">
@@ -574,35 +664,24 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
               </Button>
             )}
             {canReview && (
-              <details className="action-menu">
-                <summary className="button button-primary">
-                  <ShieldCheck size={16} />
-                  Verification decision
-                  <ChevronRight size={14} />
-                </summary>
-                <div>
-                  {(statusActions[org.status] || []).map((s) => (
-                    <button
-                      key={s}
-                      onClick={(e) => {
-                        e.currentTarget
-                          .closest("details")
-                          ?.removeAttribute("open");
-                        setDecision(s);
-                        setError(null);
-                        setNote("");
-                      }}
-                    >
-                      {s === "active"
-                        ? org.status === "suspended"
-                          ? "Reactivate organization"
-                          : "Approve organization"
-                        : label(s)}
-                      <ArrowRight size={14} />
-                    </button>
-                  ))}
-                </div>
-              </details>
+              <ActionMenu
+                label="Verification decision"
+                icon={<ShieldCheck size={16} />}
+                items={(statusActions[org.status] || []).map((s) => ({
+                  value: s,
+                  label:
+                    s === "active"
+                      ? org.status === "suspended"
+                        ? "Reactivate organization"
+                        : "Approve organization"
+                      : label(s),
+                }))}
+                onSelect={(status) => {
+                  setDecision(status);
+                  setError(null);
+                  setNote("");
+                }}
+              />
             )}
           </div>
         </div>

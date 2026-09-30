@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -32,6 +33,8 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { api, queryString, useAction, useApi } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { listReturnPath } from "../lib/navigation";
 import { formFields } from "../lib/form-definitions";
 import {
   dateInput,
@@ -61,6 +64,8 @@ import {
 } from "../components/ui";
 import { moduleIcons } from "../components/icons";
 import RecordForm from "../components/RecordForm";
+import ActionMenu from "../components/ActionMenu";
+import ScrollRegion from "../components/ScrollRegion";
 import { DocumentUpload } from "./Documents";
 import { ImportModal } from "../components/PartnerOperations";
 import SigningPanel from "../components/SigningPanel";
@@ -85,13 +90,16 @@ const prominentStatuses: Partial<Record<Module, string[]>> = {
 export default function Records() {
   const { kind: rawKind } = useParams(),
     kind = rawKind as Module,
+    route = useLocation(),
     [params, setParams] = useSearchParams();
   const { user } = useAuth(),
-    [importing, setImporting] = useState(false),
-    [view, setView] = useState<"list" | "board">("list"),
-    [query, setQuery] = useState(params.get("q") || "");
+    [importing, setImporting] = useState(false);
+  const view =
+    kind === "candidates" && params.get("view") === "board" ? "board" : "list";
+  const returnState = { returnTo: `${route.pathname}${route.search}` };
   const definition = moduleDefinitions[kind],
     page = Number(params.get("page") || 1),
+    query = params.get("q") || "",
     status = params.get("status") || "",
     creating = params.get("new") === "true",
     filtered = Boolean(
@@ -102,24 +110,11 @@ export default function Records() {
       params.get("currency") ||
       params.get("requirement_type"),
     );
+  const debouncedQuery = useDebouncedValue(query, kind);
   const result = useApi<any>(
-    `/records/${kind}?${queryString({ page, status, q: params.get("q"), from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), limit: view === "board" ? 100 : 20 })}`,
+    `/records/${kind}?${queryString({ page, status, q: debouncedQuery, from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), limit: view === "board" ? 100 : 20 })}`,
     Boolean(definition),
   );
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (query !== (params.get("q") || "")) {
-        const next = new URLSearchParams(params);
-        next.set("q", query);
-        next.delete("page");
-        setParams(next, { replace: true });
-      }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [query, params]);
-  useEffect(() => {
-    setQuery(params.get("q") || "");
-  }, [kind]);
   if (!definition)
     return (
       <EmptyState
@@ -127,11 +122,11 @@ export default function Records() {
         description="Choose a workspace from the navigation."
       />
     );
-  const setParam = (key: string, value: string) => {
+  const setParam = (key: string, value: string, replace = false) => {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
     if (key !== "page") next.delete("page");
-    setParams(next);
+    setParams(next, { replace });
   };
   const Icon = moduleIcons[kind],
     records: WorkRecord[] = result.data?.items || [];
@@ -224,7 +219,7 @@ export default function Records() {
         <div className="table-filters">
           <SearchInput
             value={query}
-            onChange={setQuery}
+            onChange={(value) => setParam("q", value, true)}
             placeholder={`Search ${definition.label.toLowerCase()}…`}
           />
           <div className="filter-right">
@@ -271,14 +266,16 @@ export default function Records() {
                 <button
                   className={view === "list" ? "selected" : ""}
                   aria-label="List view"
-                  onClick={() => setView("list")}
+                  aria-pressed={view === "list"}
+                  onClick={() => setParam("view", "")}
                 >
                   <LayoutList size={17} />
                 </button>
                 <button
                   className={view === "board" ? "selected" : ""}
                   aria-label="Pipeline board view"
-                  onClick={() => setView("board")}
+                  aria-pressed={view === "board"}
+                  onClick={() => setParam("view", "board")}
                 >
                   <Columns3 size={17} />
                 </button>
@@ -312,7 +309,7 @@ export default function Records() {
             </button>
           </div>
         )}
-        {result.isPending ? (
+        {result.isPending || query !== debouncedQuery ? (
           <Loading />
         ) : result.error ? (
           <ErrorState error={result.error} retry={() => result.refetch()} />
@@ -334,8 +331,7 @@ export default function Records() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setQuery("");
-                  setParams({});
+                  setParams(view === "board" ? { view: "board" } : {});
                 }}
               >
                 Clear filters
@@ -364,6 +360,7 @@ export default function Records() {
                   .map((r) => (
                     <Link
                       to={`/app/${kind}/${r.id}`}
+                      state={returnState}
                       className="kanban-card"
                       key={r.id}
                     >
@@ -431,6 +428,7 @@ export default function Records() {
                       <Link
                         className="identity-cell"
                         to={`/app/${kind}/${r.id}`}
+                        state={returnState}
                       >
                         {kind === "candidates" ? (
                           <Avatar name={r.title} />
@@ -499,6 +497,7 @@ export default function Records() {
                     <td>
                       <Link
                         to={`/app/${kind}/${r.id}`}
+                        state={returnState}
                         className="icon-button"
                         aria-label={`Open ${r.number}`}
                       >
@@ -538,6 +537,7 @@ export default function Records() {
 export function RecordDetail() {
   const { kind: rawKind, id } = useParams(),
     kind = rawKind as Module,
+    route = useLocation(),
     { user } = useAuth(),
     toast = useToast(),
     client = useQueryClient();
@@ -704,7 +704,9 @@ export function RecordDetail() {
   };
   return (
     <div>
-      <BackLink to={`/app/${kind}`}>{definition.label}</BackLink>
+      <BackLink to={listReturnPath(route.state, `/app/${kind}`)}>
+        {definition.label}
+      </BackLink>
       <PageHeader
         eyebrow={r.number}
         title={r.title}
@@ -745,31 +747,24 @@ export function RecordDetail() {
             </Link>
           ))}
         {r.allowed_transitions?.length ? (
-          <details className="action-menu">
-            <summary className="button button-primary">
-              Update status
-              <ChevronRight size={15} />
-            </summary>
-            <div>
-              {r.allowed_transitions.map((s) => (
-                <button
-                  key={s}
-                  onClick={(e) => {
-                    e.currentTarget.closest("details")?.removeAttribute("open");
-                    setTransition(s);
-                    setError(null);
-                    setNote("");
-                  }}
-                >
-                  {label(s)}
-                  <ArrowRight size={14} />
-                </button>
-              ))}
-            </div>
-          </details>
+          <ActionMenu
+            label="Update status"
+            items={r.allowed_transitions.map((s) => ({
+              value: s,
+              label: label(s),
+            }))}
+            onSelect={(status) => {
+              setTransition(status);
+              setError(null);
+              setNote("");
+            }}
+          />
         ) : null}
       </PageHeader>
-      <div className="workflow-strip">
+      <ScrollRegion
+        className="workflow-strip"
+        label={`${definition.singular} workflow stages`}
+      >
         {workflow.map((stage, i) => (
           <div
             key={stage}
@@ -786,7 +781,7 @@ export function RecordDetail() {
             {i < workflow.length - 1 && <ChevronRight size={14} />}
           </div>
         ))}
-      </div>
+      </ScrollRegion>
       <div className="detail-summary-grid">
         <div className="detail-summary">
           <span>Buyer / client</span>
@@ -885,7 +880,7 @@ export function RecordDetail() {
               {r.items && r.items.length > 0 && (
                 <div className="detail-line-items">
                   <h3>Line items</h3>
-                  <div className="table-scroll">
+                  <ScrollRegion className="table-scroll" label="Line items">
                     <table className="data-table">
                       <thead>
                         <tr>
@@ -928,7 +923,7 @@ export function RecordDetail() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </ScrollRegion>
                   <div className="line-total">
                     <span>Delivery charges</span>
                     <b>
@@ -1361,7 +1356,7 @@ export function Comparison() {
         </div>
       ) : (
         <div className="card comparison-card">
-          <div className="table-scroll">
+          <ScrollRegion className="table-scroll" label="Quotation comparison">
             <table className="comparison-table">
               <thead>
                 <tr>
@@ -1459,7 +1454,7 @@ export function Comparison() {
                 </tr>
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
         </div>
       )}
     </div>

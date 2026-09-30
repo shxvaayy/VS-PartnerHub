@@ -560,13 +560,15 @@ export function CardHeader({
 }
 export function TextLink({
   to,
+  state,
   children,
 }: {
   to: string;
+  state?: unknown;
   children: ReactNode;
 }) {
   return (
-    <Link className="text-link" to={to}>
+    <Link className="text-link" to={to} state={state}>
       {children}
       <ArrowRight size={15} />
     </Link>

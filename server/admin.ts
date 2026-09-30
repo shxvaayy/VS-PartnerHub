@@ -27,6 +27,7 @@ import {
 } from "../shared/domain.js";
 import { csv } from "./records.js";
 import { INTERNAL_ORG_ID } from "./config.js";
+import { organizationSearch } from "./organizations.js";
 export const adminRouter = Router();
 adminRouter.use(authenticated);
 adminRouter.get(
@@ -38,12 +39,7 @@ adminRouter.get(
       403,
       "Only an authorized internal team can export the directory.",
     );
-    const p = pagination.parse(req.query),
-      type = z.string().max(50).optional().parse(req.query.type),
-      q = db("organizations").whereNot("id", INTERNAL_ORG_ID);
-    if (p.q) q.whereILike("legal_name", `%${p.q}%`);
-    if (p.status) q.where("status", p.status);
-    if (type) q.where("type", type);
+    const { q } = organizationSearch(req.user, req.query);
     const count = await q.clone().count({ n: "*" }).first();
     assert(
       Number(count?.n) <= 10000,

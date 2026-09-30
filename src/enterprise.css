@@ -2441,6 +2441,65 @@
   color: #52694b;
   font-size: 12px;
 }
+.directory-results {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+}
+.directory-results > .button {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+.directory-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-basis: 100%;
+  min-width: 0;
+}
+.directory-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #d5e2d3;
+  border-radius: 8px;
+  background: #f2f6ef;
+  color: var(--green);
+  text-align: left;
+  font-size: 12px;
+}
+.directory-filter-chip > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.directory-filter-chip > svg {
+  flex-shrink: 0;
+}
+.directory-filter-chip:hover {
+  background: #e8f0e2;
+}
+.directory-filter-chip:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .directory-results {
+    padding: 12px 16px;
+  }
+  .directory-results > .button,
+  .directory-filter-chip {
+    min-height: 44px;
+  }
+}
 .discovery-advanced > summary {
   cursor: pointer;
   padding: 10px 0;

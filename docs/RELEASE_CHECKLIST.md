@@ -44,7 +44,7 @@ The additional roadmap work includes catalog/import/export tools, configurable s
 
 ## Remaining operational inputs
 
-1. **Company email sender and provider:** configure an authorized SMTP sender or a verified Resend domain/key; validate actual OTP, reset and business-message delivery to intended external inboxes. Local SMTP acceptance is already tested and is not evidence of external delivery.
+1. **Company email sender and provider — deferred by the user:** configure an authorized SMTP sender or a verified Resend domain/key when this work resumes; validate actual OTP, reset and business-message delivery to intended external inboxes. Local SMTP acceptance is already tested and is not evidence of external delivery.
 2. **Production operations:** choose off-site backup destination/schedule/retention, key escrow and monitoring/recovery ownership, then rehearse restoration from that independent destination and measure business recovery/load objectives. The live PostgreSQL/private-Blob snapshot has passed an isolated local restore; this is not an off-site recovery SLA.
 3. **Optional external services/distribution:** supply the selected statutory/BGV/ERP/signature/SMS contracts and native signing identities when those deployments are required.
 
