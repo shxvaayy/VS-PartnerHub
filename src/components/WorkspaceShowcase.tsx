@@ -42,7 +42,6 @@ export function WorkspaceShowcase({
     start: 0,
     distance: 0,
     step: 0,
-    leading: 0,
   });
   const active = useRef(0);
   const pending = useRef<number | null>(null);
@@ -89,10 +88,7 @@ export function WorkspaceShowcase({
         group.style.getPropertyValue("--workspace-top"),
       );
       current.start =
-        window.scrollY +
-        container.getBoundingClientRect().top +
-        current.leading -
-        top;
+        window.scrollY + container.getBoundingClientRect().top - top;
       const progress = Math.max(
         0,
         Math.min(1, (window.scrollY - current.start) / current.distance),
@@ -143,6 +139,7 @@ export function WorkspaceShowcase({
       const wasVisible =
         bounds.bottom > headerHeight && bounds.top < viewportHeight;
       const mobile = window.matchMedia("(max-width: 800px)").matches;
+      container.dataset.roomy = String(mobile && viewportHeight >= 860);
       container.dataset.density =
         mobile && viewportHeight <= 620
           ? "tight"
@@ -150,18 +147,21 @@ export function WorkspaceShowcase({
               (!mobile && viewportHeight <= 850)
             ? "compact"
             : "comfortable";
-      // Desktop pins the heading and card as one presentation. On a phone,
-      // preserve the compact card's full touch area below the section heading.
-      const content = mobile ? card : group;
-      const leading = mobile
-        ? heading.offsetHeight +
-          Number.parseFloat(getComputedStyle(heading).marginBottom)
-        : 0;
-      const height = content.offsetHeight;
+      // Keep the heading and card together at every width. Fit the complete
+      // group before pinning, including on phones with visible browser controls.
+      if (mobile) {
+        for (const density of ["compact", "tight"]) {
+          if (group.offsetHeight + headerHeight + 24 <= viewportHeight) break;
+          container.dataset.density = density;
+        }
+      }
+      const height = group.offsetHeight;
       const top =
         headerHeight +
-        Math.max(mobile ? 8 : 12, (viewportHeight - headerHeight - height) / 2);
-      // Portrait phones use the compact card. Retain readable, unpinned tabs
+        (mobile
+          ? 12
+          : Math.max(12, (viewportHeight - headerHeight - height) / 2));
+      // Portrait phones use the compact group. Retain readable, unpinned tabs
       // only when zoom, landscape, or enlarged text leaves insufficient space.
       const enabled = !motion.matches && height + top + 12 <= viewportHeight;
       const step = mobile
@@ -169,15 +169,12 @@ export function WorkspaceShowcase({
         : Math.max(280, Math.min(520, viewportHeight * 0.48));
       const distance = step * organizationTypes.length;
       group.style.setProperty("--workspace-top", `${top}px`);
-      container.style.setProperty(
-        "--workspace-stage-height",
-        `${height + leading}px`,
-      );
+      container.style.setProperty("--workspace-stage-height", `${height}px`);
       container.style.setProperty("--workspace-distance", `${distance}px`);
       container.dataset.scroll = String(enabled);
       const start =
-        window.scrollY + container.getBoundingClientRect().top + leading - top;
-      geometry.current = { enabled, start, distance, step, leading };
+        window.scrollY + container.getBoundingClientRect().top - top;
+      geometry.current = { enabled, start, distance, step };
       setPinned(enabled);
       if (
         wasInside &&

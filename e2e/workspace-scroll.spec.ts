@@ -26,24 +26,15 @@ async function tour(page: Page) {
     const group = track.querySelector<HTMLElement>(
       ".hub-workspace-presentation",
     )!;
-    const heading = group.querySelector<HTMLElement>(".hub-section-heading")!;
-    const mobile = window.matchMedia("(max-width: 800px)").matches;
-    const pinned = mobile ? stage : group;
-    const top = Number.parseFloat(getComputedStyle(pinned).top);
-    const leading = mobile
-      ? heading.offsetHeight +
-        Number.parseFloat(getComputedStyle(heading).marginBottom)
-      : 0;
+    const top = Number.parseFloat(getComputedStyle(group).top);
     return {
-      start: window.scrollY + track.getBoundingClientRect().top + leading - top,
-      distance: track.clientHeight - pinned.offsetHeight - leading,
+      start: window.scrollY + track.getBoundingClientRect().top - top,
+      distance: track.clientHeight - group.offsetHeight,
       top,
       cardTop:
         top +
-        (mobile
-          ? 0
-          : stage.getBoundingClientRect().top -
-            group.getBoundingClientRect().top),
+        stage.getBoundingClientRect().top -
+        group.getBoundingClientRect().top,
     };
   });
 }
@@ -289,15 +280,17 @@ test.describe("Mobile workspace scroll tour", () => {
   test.use({ isMobile: true, hasTouch: true, reducedMotion: "no-preference" });
 
   for (const [width, height] of [
+    [600, 920],
+    [600, 820],
     [390, 844],
     [375, 667],
     [360, 640],
     [320, 568],
     [375, 550],
   ]) {
-    test(`${width} × ${height}: all workspaces fit, scroll forward and backward, then release`, async ({
+    test(`${width} × ${height}: heading and card stay together, scroll forward and backward, then release`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await page.setViewportSize({ width, height });
       const geometry = await tour(page);
       for (const i of [...names.keys(), 6, 3, 0]) {
@@ -317,8 +310,19 @@ test.describe("Mobile workspace scroll tour", () => {
         });
         await expect(panel.getByRole("link")).toBeInViewport({ ratio: 1 });
         const box = await page.locator(".hub-workspace-stage").boundingBox();
-        expect(box!.y).toBeCloseTo(geometry.top, 0);
+        expect(box!.y).toBeCloseTo(geometry.cardTop, 0);
         expect(box!.y + box!.height).toBeLessThanOrEqual(height - 10);
+        expect(height - box!.y - box!.height).toBeLessThanOrEqual(112);
+        await expect(page.locator("#workspace-heading")).toBeInViewport({
+          ratio: 1,
+        });
+        const group = await page
+          .locator(".hub-workspace-presentation")
+          .boundingBox();
+        expect(group!.y).toBeCloseTo(geometry.top, 0);
+        const header = await page.locator(".public-header").boundingBox();
+        expect(group!.y - header!.height).toBeGreaterThanOrEqual(8);
+        expect(group!.y - header!.height).toBeLessThanOrEqual(16);
         expect(
           await panel.locator(".hub-workspace-journey > div").count(),
         ).toBe(4);
@@ -326,6 +330,15 @@ test.describe("Mobile workspace scroll tour", () => {
           await page.evaluate(() => document.documentElement.scrollWidth),
         ).toBeLessThanOrEqual(width);
       }
+      const spacing = await page.locator("#workspaces").evaluate((element) => ({
+        above: Number.parseFloat(getComputedStyle(element).paddingTop),
+        below: Number.parseFloat(getComputedStyle(element).paddingBottom),
+      }));
+      expect(spacing.above).toBeLessThanOrEqual(24);
+      expect(spacing.below).toBeLessThanOrEqual(24);
+      await page.screenshot({
+        path: testInfo.outputPath(`mobile-heading-${width}x${height}.png`),
+      });
       await move(page, geometry.start + geometry.distance + 160);
       await expect(
         tabs(page).getByRole("tab", { name: "Other", exact: true }),
@@ -333,6 +346,11 @@ test.describe("Mobile workspace scroll tour", () => {
       expect(
         await page
           .locator(".hub-workspace-stage")
+          .evaluate((el) => el.getBoundingClientRect().top),
+      ).toBeLessThan(geometry.cardTop - 140);
+      expect(
+        await page
+          .locator("#workspaces .hub-section-heading")
           .evaluate((el) => el.getBoundingClientRect().top),
       ).toBeLessThan(geometry.top - 140);
       await page
@@ -416,6 +434,9 @@ test.describe("Mobile workspace scroll tour", () => {
       exact: true,
     });
     await expect(technology).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#workspace-heading")).toBeInViewport({
+      ratio: 1,
+    });
     // Mobile browser controls can reduce 100svh without changing the layout
     // viewport used by height media queries. Keep the whole card in that space.
     const browserControls = await page.addStyleTag({
@@ -447,6 +468,9 @@ test.describe("Mobile workspace scroll tour", () => {
       );
       await expect(technology).toHaveAttribute("aria-selected", "true");
       await expect(technology).toBeInViewport({ ratio: 0.95 });
+      await expect(page.locator("#workspace-heading")).toBeInViewport({
+        ratio: 1,
+      });
       await expect
         .poll(() =>
           page
