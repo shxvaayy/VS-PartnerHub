@@ -2,22 +2,25 @@
 
 Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLite and an isolated PostgreSQL cluster. Tests used disposable databases and explicitly labelled QA files. The working database and uploads remain separate at `http://localhost:5173`.
 
-| Check                                       | Result                                                                                                                   |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| TypeScript, production build and formatting | Passed                                                                                                                   |
-| SQLite automated suite                      | 132 / 132 passed                                                                                                         |
-| PostgreSQL automated suite                  | 132 / 132 passed                                                                                                         |
-| Browser acceptance                          | 32 / 32 passed; no retries or skipped tests                                                                              |
-| Live VS AI acceptance                       | 32 / 32 passed across all six capabilities                                                                               |
-| PDF and CSV acceptance                      | 7 / 7 passed                                                                                                             |
-| Real-mode SMTP authentication               | 7 / 7 passed using an authenticated loopback receiver; 12 messages received                                              |
-| Workspace navigation                        | All 34 routes loaded without browser runtime errors                                                                      |
-| Accessibility                               | 61 / 61 views passed automated WCAG A/AA checks, including all 16 role dashboards                                        |
-| Responsive layout                           | Phone and tablet browser scenarios passed; the 390px navigation audit found no horizontal overflow                       |
-| Production Node runtime                     | Compiled assets, configuration guards, security headers, secure cookies, demo suppression and restart persistence passed |
-| SQLite recovery                             | Application restarted from the generated backup and read the saved record with the persisted session                     |
-| Dependency audit                            | Zero reported vulnerabilities                                                                                            |
-| Configured secret scan                      | No configured secret values found in versionable files; local environment file permissions are `0600`                    |
+| Check                                       | Result                                                                                                                                                     |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript, production build and formatting | Passed                                                                                                                                                     |
+| SQLite automated suite                      | 151 / 151 passed                                                                                                                                           |
+| PostgreSQL automated suite                  | 151 / 151 passed                                                                                                                                           |
+| Browser acceptance                          | 32 / 32 passed; no retries or skipped tests                                                                                                                |
+| Live VS AI acceptance                       | 32 / 32 passed across all six capabilities                                                                                                                 |
+| PDF and CSV acceptance                      | 7 / 7 passed                                                                                                                                               |
+| Real-mode SMTP authentication               | 7 / 7 passed using an authenticated loopback receiver; 12 messages received                                                                                |
+| Workspace navigation                        | All 34 routes loaded without browser runtime errors                                                                                                        |
+| Accessibility                               | 61 / 61 views passed automated WCAG A/AA checks, including all 16 role dashboards                                                                          |
+| Responsive layout                           | Phone and tablet browser scenarios passed; the 390px navigation audit found no horizontal overflow                                                         |
+| Production Node runtime                     | Compiled assets, configuration guards, security headers, secure cookies, demo suppression and restart persistence passed                                   |
+| SQLite recovery                             | Application restarted from the generated backup and read the saved record with the persisted session                                                       |
+| Encrypted recovery regression               | 19 / 19 passed: consistent WAL snapshot, document/logo bytes, key/file permissions, corruption, missing files, traversal, duplicates and overwrite refusal |
+| Live PostgreSQL/private Blob recovery       | 7 / 7 passed: live read-only snapshot restored locally, 42 table counts matched, existing login/permissions and private download hash verified             |
+| PostgreSQL fixture recovery                 | 24 / 24 passed with 64 private documents and module record/history APIs in isolated databases                                                              |
+| Dependency audit                            | Zero reported vulnerabilities                                                                                                                              |
+| Configured secret scan                      | No configured secret values found in versionable files; local environment file permissions are `0600`                                                      |
 
 The browser suite completes registration with document/email review, procurement through payment, recruitment through joining, team invitations and email sign-in verification, staffing timesheets, service milestones, technology demos, contract renewal, performance reviews and support conversations. AI scenarios check actual uploads and downloads, real server progress events, cancellation, retry, reduced motion, saved conversations, named actions, human review, editable drafts, comparison, discovery and operational evidence on desktop and mobile.
 
@@ -30,6 +33,10 @@ Browser acceptance uses the Playwright-managed Chromium version both locally and
 Workspace branding links to the public homepage, whose signed-in header shows a visible **My workspace** action on desktop and mobile. The dashboard welcome illustration uses normal-flow rows below its copy on phone/tablet layouts. A separate local review passed 34 checks across administrator and HR dashboards at 320, 360, 390, 600, 768, 834, 1024 and 1440px, including label/text separation, unclipped labels, header layout, round-trip navigation, unchanged sessions and mobile accessibility.
 
 The latest specification audit added required company-type/contact-role checks for all nine registration types, shared international phone validation for organization and candidate/contact records, and protection against clearing a primary contact's phone. Invalid submissions leave no account or organization behind. The browser verifies the phone error before continuing onboarding.
+
+The recovery audit fixed a CLI ordering bug: the old backup command ran migrations and internal-account initialization before taking a snapshot. Backup now opens the existing SQLite source read-only and never imports application initialization. The coordinated recovery command captures a shared PostgreSQL snapshot and all referenced private document/logo files, records hashes and encrypts the archive. Restore authenticates before extraction and refuses existing targets. Regression evidence is in `artifacts/recovery-verification/regression.json`.
+
+The actual production snapshot was restored into a new local PostgreSQL cluster with delivery/maintenance disabled; all 42 table counts matched and its existing account and one private document passed API checks. The source snapshot had no transactions or logos, so those are not claimed as live-record recovery tests. The independent synthetic PostgreSQL drill checks populated module records/history and 64 documents. See `live-snapshot.json`, `live-restore.json` and `fixture-restore.json` in `artifacts/recovery-verification/`, and [OPERATIONS.md](OPERATIONS.md) to reproduce. Original source data and the encrypted backup were not modified; temporary restore databases and plaintext files were removed. Off-site scheduling, destination/retention and recovery ownership are separate outstanding operational work.
 
 The audit also found a native Node 22 zlib crash when cancelling PDF workers. Cancellable PDF workers now use PDF.js's JavaScript compression fallbacks, finish parser cleanup before sending results, and retain their concurrency slot until termination completes. Repeated cancellations at different page stages and mixed queued/cancelled reads pass; both complete database suites were rerun successfully after the fix. Production assets are checked for accidental inclusion of local demonstration credentials.
 

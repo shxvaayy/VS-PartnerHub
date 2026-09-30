@@ -20,7 +20,56 @@ The development server uses Vite and a watched API. `npm start` serves the compi
 
 Database **and** private uploads form one backup set. Include the deployed revision, environment configuration references and encryption-key recovery procedure. Store secrets separately from ordinary data archives. Use encrypted off-site storage with restricted access, retention and restore testing.
 
-Pause application writes while taking the pair so database metadata and files agree. Never copy only a live SQLite file: WAL transactions may not yet be checkpointed.
+Use the coordinated command below. It reads a consistent database snapshot and copies the immutable document and company-logo objects referenced by that snapshot. A missing object or size mismatch fails the backup; it never publishes a partial set. Pause concurrent file deletion/retention work if it prevents a complete capture. Never copy only a live SQLite file: WAL transactions may not yet be checkpointed.
+
+## Coordinated encrypted backup
+
+Generate a recovery key once in a restricted directory and preserve it separately in the organization's approved secret store:
+
+```sh
+npm run recovery:keygen -- --key /private/keys/partnerhub-recovery.key
+npm run recovery:backup -- --key /private/keys/partnerhub-recovery.key --output backups/release.vshub
+```
+
+The command uses the same database/file configuration as the application (`DATABASE_URL` or `SQLITE_PATH`, plus `FILE_STORAGE`, `UPLOAD_DIR` or private Blob credentials). `DOTENV_CONFIG_PATH` can select a protected configuration file. `BACKUP_REVISION` overrides the source revision; otherwise the command uses `VERCEL_GIT_COMMIT_SHA` or the current checkout's Git revision. When backing up a different release, set its deployed revision explicitly.
+
+For PostgreSQL, install client tools at least as new as the database server and use `PG_BIN` if they are outside `PATH`. The command opens a read-only repeatable-read transaction, exports its snapshot, reads table counts/document references and runs `pg_dump` against the **same snapshot**. It includes the application's `public` schema. Remote connections require certificate verification; `PGSSLROOTCERT` can specify the approved CA bundle. Passwords are passed to the subprocess through its environment, never command-line arguments. The backup never imports the application's database initializer or runs migrations, seeding, maintenance, email or webhook delivery.
+
+The archive contains a database dump, referenced document/logo bytes and a manifest with capture start/end times, source revision, database version, table counts, sizes and SHA-256 hashes. It is a gzip-compressed TAR encrypted with AES-256-GCM and a fresh nonce. The header and ciphertext are authenticated. Temporary files/directories are private (`0600`/`0700`) and removed when the operation finishes. Publishing is atomic and refuses to replace an existing backup. Keep the independent `INTEGRATION_ENCRYPTION_KEY` recoverable too: provider settings inside the database remain encrypted with that application key.
+
+Incomplete browser-upload staging objects are transient and are not included as finalized documents. After recovery, users must retry unfinished uploads. The archive format supports up to 99,998 finalized document/logo files and a 32 MB manifest; larger sets fail explicitly instead of publishing an unrestorable set. Restore defaults to a 20 GiB size limit; `--max-bytes` can increase it after checking destination capacity.
+
+This command creates the backup artifact. Configure an approved off-site destination, retention policy, schedule, failure alerts and recovery-key escrow separately; a local file is not an independent disaster-recovery copy.
+
+## Authenticate and unpack
+
+```sh
+npm run recovery:unpack -- --key /private/keys/partnerhub-recovery.key --input backups/release.vshub --destination /private/restores/new-release
+```
+
+The destination must not exist. The command authenticates the complete ciphertext **before** examining or extracting the archive, rejects traversal paths, links, duplicate/oversized entries and manifest mismatches, and verifies every database/file hash. It never connects to a database, changes an existing destination or starts the application. Failed verification removes its partial destination.
+
+For SQLite, use the unpacked `database.sqlite` and `uploads/` in an isolated instance. For PostgreSQL, create a new empty database, then restore `database.dump` with `pg_restore --exit-on-error --single-transaction --no-owner --no-privileges`. The dump includes `CREATE SCHEMA public`; remove only the empty default `public` schema in that newly created target first. Do not use `CASCADE` or point this procedure at an existing business database. Keep the original deployment intact until all verification steps pass.
+
+## Rehearse a PostgreSQL restore
+
+With PostgreSQL server/client tools available locally, this command creates its **own** password-protected loopback cluster and new database, restores the archive and checks it through the application:
+
+```sh
+npm run recovery:verify -- --input backups/release.vshub --key /private/keys/partnerhub-recovery.key --credentials /private/review-account.json
+```
+
+The credentials file contains the email/password of an authorized internal review account already in that backup and should be `0600`. A password account is required for this drill; the runner does not bypass MFA or send live verification emails. It checks all captured table counts, indexes, document/logo references, existing login and role permissions, dashboard/audit APIs, available module records/history and private download hashes, including anonymous denial. It deliberately never imports `server/index.ts`, which starts background workers.
+
+Before starting the restored API, the runner clears **only the temporary clone's** delivery credentials, email/webhook queues, sessions, auth challenges/attempts, upload tickets and job leases; it disables cloned webhook endpoints and integration tokens. It also uses a fresh session secret, local files and no external provider credentials. The original backup and source are unchanged. The temporary cluster and decrypted files are removed afterward. The JSON report contains counts/checks, not source credentials or document content.
+
+For repeatable transaction-rich test data without touching business databases:
+
+```sh
+npm run recovery:verify -- --fixture --output artifacts/recovery-verification/fixture-restore.json
+```
+
+This mode creates, seeds, backs up and restores a separate local PostgreSQL database. Reports identify it as synthetic fixtures. It is distinct from the live-source recovery evidence.
 
 ## SQLite
 
@@ -28,13 +77,13 @@ Pause application writes while taking the pair so database metadata and files ag
 npm run db:backup
 ```
 
-The command uses SQLite `VACUUM INTO` for a consistent snapshot and writes a uniquely named file under `backups/`. Copy `UPLOAD_DIR` with that snapshot during the same write-pause window. The generated backup path is printed by the CLI. The production smoke test opens a generated backup read-only, checks `PRAGMA integrity_check` and verifies a persisted record, then boots the application from that backup and reads the record through its authenticated API.
+This legacy database-only command opens the existing source read-only and uses SQLite's online backup API, including committed WAL transactions. It normalizes only the copy into a standalone database and checks integrity before reporting success. It never migrates the source, creates internal accounts or creates an absent source database. It writes a unique file under `backups/`; use `recovery:backup` for an encrypted set including private files. The production smoke test opens the snapshot read-only, verifies a persisted record, then boots the application from that backup and reads the record through its authenticated API.
 
 To restore, stop the application and configure a **new** `SQLITE_PATH` and `UPLOAD_DIR` containing the matched backup set. Keep the existing database and files intact until the restored instance has passed verification. Start the restored revision, inspect migrations/health, sign in and download sample documents.
 
 ## PostgreSQL / Docker Compose
 
-Use a database-consistent dump and the matching upload volume. This example creates a fresh backup directory and pauses the application container:
+The coordinated encrypted command is preferred when the host has PostgreSQL client tools and access to the private file store. For a manual Docker backup, use a database-consistent dump and matching upload volume. This example creates a fresh backup directory and pauses the application container:
 
 ```sh
 PARTNERHUB_BACKUP_DIR="backups/$(date -u +%Y%m%dT%H%M%SZ)"
@@ -81,7 +130,7 @@ Monitor health failures, 5xx responses, email failures, storage capacity, backup
 
 The live deployment stores metadata in Neon PostgreSQL and document bytes in private Vercel Blob. Preserve both as a coordinated backup set. Use the provider's approved database backup/restore tooling or a certificate-verified `pg_dump`, and export the private objects referenced by the corresponding document metadata. Include immutable document hashes and the deployed revision in the manifest. Staging upload objects are temporary and are not substitutes for finalized documents.
 
-Restore rehearsals must use a separate database and private store, with scheduled jobs and external email/webhook delivery disabled. Check the same authentication, record-chain and document-download steps listed above before any traffic switch. The local SQLite restore and cloud-storage acceptance tests do not certify a managed off-site restore or a recovery SLA; that deployment drill and the organization's backup destination remain operational requirements.
+On 30 September 2026, a read-only snapshot of the live Neon database and its referenced private Blob document was encrypted and restored into an isolated local PostgreSQL cluster. All 42 table counts matched; existing password authentication, restored permissions and an authorized private download passed, while anonymous access was denied (7 checks). The live snapshot contained no business transactions or company logos. Separately, a synthetic PostgreSQL fixture restored 64 private documents and checked module records/history (24 checks). These results prove the recorded local recoveries, not off-site availability or a recovery SLA. The off-site destination, retention/schedule, monitoring owner and recovery objectives remain operational requirements.
 
 ## AI operations
 

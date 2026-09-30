@@ -69,6 +69,8 @@ Generate the manager handoff with `npm run report:verification` after completing
 
 [Deployment instructions](docs/DEPLOYMENT.md) cover Docker/PostgreSQL, HTTPS, provider configuration and first-administrator setup. [Operations](docs/OPERATIONS.md) covers backup/recovery and retention. The runtime should use a dedicated account, persistent private storage and an authorized email sender.
 
+`npm run recovery:backup` creates an encrypted, consistent database/private-file backup without running migrations. `recovery:unpack` authenticates and verifies it into a new directory; `recovery:verify` rehearses PostgreSQL recovery in an isolated local cluster. Key, source configuration and verification-account setup are documented in [Operations](docs/OPERATIONS.md#coordinated-encrypted-backup).
+
 Payment records track actual bank references entered by authorized users; financial settlement is an external integration. Statutory KYC and BGV decisions are staff-reviewed. Electronic signing evidence does not issue a statutory certificate-based digital signature. Native distribution requires the platform SDKs, signing identities and a deployed HTTPS origin. These external dependencies must be configured and verified for the intended rollout.
 
 ## Stack
