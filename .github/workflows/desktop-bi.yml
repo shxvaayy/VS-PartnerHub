@@ -1,6 +1,11 @@
 name: Verify desktop BI workbooks
 on:
   workflow_dispatch:
+    inputs:
+      include_tableau:
+        description: Also verify Tableau when its official installer is accessible
+        type: boolean
+        default: false
   push:
     branches: [main, codex/production-acceptance]
     paths:
@@ -15,7 +20,7 @@ permissions:
   contents: read
 concurrency:
   group: desktop-bi-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   desktop:
     name: ${{ matrix.platform }} desktop acceptance
@@ -24,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [power-bi, tableau]
+        platform: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.include_tableau && '["power-bi", "tableau"]' || '["power-bi"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,9 +39,20 @@ jobs:
       - run: npm ci
       - name: Prepare synthetic offline workbooks
         run: node --import tsx scripts/prepare-bi-desktop.ts
+      - uses: actions/cache/restore@v4
+        id: installer-cache
+        with:
+          path: ${{ runner.temp }}/partnerhub-${{ matrix.platform }}-setup.exe
+          key: desktop-${{ matrix.platform }}-${{ hashFiles('scripts/desktop-bi-tools.json') }}
       - name: Install and open the official desktop application
+        id: desktop
         shell: powershell
         run: ./scripts/verify-bi-desktop.ps1 -Platform '${{ matrix.platform }}'
+      - uses: actions/cache/save@v4
+        if: always() && steps.desktop.outputs.installer_verified == 'true' && steps.installer-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/partnerhub-${{ matrix.platform }}-setup.exe
+          key: desktop-${{ matrix.platform }}-${{ hashFiles('scripts/desktop-bi-tools.json') }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

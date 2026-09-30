@@ -1,5 +1,6 @@
 param([ValidateSet('power-bi', 'tableau')][string]$Platform)
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 if ($env:GITHUB_ACTIONS -ne 'true' -or -not $env:RUNNER_TEMP) {
   throw 'Run desktop acceptance in an isolated Windows Actions runner.'
 }
@@ -76,11 +77,15 @@ function Invoke-Control($Control) {
 }
 try {
   $installer = Join-Path $env:RUNNER_TEMP "partnerhub-$Platform-setup.exe"
-  Write-Host "Downloading official $($tool.name) $($tool.version)."
-  Invoke-WebRequest -UseBasicParsing -Uri $tool.url -OutFile $installer
+  if (-not (Test-Path $installer) -or (Get-FileHash $installer -Algorithm SHA256).Hash -ne $tool.sha256) {
+    Write-Host "Downloading official $($tool.name) $($tool.version)."
+    & curl.exe --fail --location --retry 2 --max-time 600 --output $installer $tool.url
+    if ($LASTEXITCODE -ne 0) { throw "The official installer download failed with code $LASTEXITCODE." }
+  }
   if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $tool.sha256) { throw 'Official installer checksum does not match the pinned manifest.' }
   $signature = Get-AuthenticodeSignature $installer
   if ($signature.Status -ne 'Valid') { throw 'The official installer signature is not valid.' }
+  if ($env:GITHUB_OUTPUT) { Add-Content $env:GITHUB_OUTPUT 'installer_verified=true' }
   $checks.Add(@{ name = 'Official installer hash and Authenticode signature'; passed = $true })
   $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_CHECK=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
   $installed = Start-Process $installer -ArgumentList $arguments -PassThru -Wait
