@@ -463,7 +463,8 @@ adminRouter.get("/audit", permit("audit"), async (req, res) => {
       b
         .whereILike("actor_name", `%${p.q}%`)
         .orWhereILike("action", `%${p.q}%`)
-        .orWhereILike("record_number", `%${p.q}%`),
+        .orWhereILike("record_number", `%${p.q}%`)
+        .orWhereILike("record_id", `%${p.q}%`),
     );
   if (p.category) q.where("module", p.category);
   if (p.from) q.where("created_at", ">=", p.from);

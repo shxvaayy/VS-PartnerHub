@@ -5,8 +5,8 @@ Verified on **30 September 2026 (IST)** using Node.js 22.21, local Chrome, SQLit
 | Check                                       | Result                                                                                                                   |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript, production build and formatting | Passed                                                                                                                   |
-| SQLite automated suite                      | 118 / 118 passed                                                                                                         |
-| PostgreSQL automated suite                  | 118 / 118 passed                                                                                                         |
+| SQLite automated suite                      | 119 / 119 passed                                                                                                         |
+| PostgreSQL automated suite                  | 119 / 119 passed                                                                                                         |
 | Browser acceptance                          | 18 / 18 passed; no retries or skipped tests                                                                              |
 | Live VS AI acceptance                       | 32 / 32 passed across all six capabilities                                                                               |
 | PDF and CSV acceptance                      | 7 / 7 passed                                                                                                             |

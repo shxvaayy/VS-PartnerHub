@@ -603,19 +603,21 @@ export function Audit() {
               }}
             >
               <option value="">All modules</option>
-              {[
-                ...modules,
-                "organizations",
-                "documents",
-                "auth",
-                "roles",
-                "team",
-                "settings",
-              ].map((m) => (
-                <option key={m} value={m}>
-                  {label(m)}
-                </option>
-              ))}
+              {Array.from(
+                new Set([
+                  ...Object.keys(defaultPermissions.super_admin),
+                  "auth",
+                ]),
+              )
+                .sort()
+                .map((m) => (
+                  <option key={m} value={m}>
+                    {m === "ai"
+                      ? "VS AI"
+                      : moduleDefinitions[m as keyof typeof moduleDefinitions]
+                          ?.label || label(m)}
+                  </option>
+                ))}
             </select>
             <Input
               type="date"

@@ -1302,6 +1302,37 @@ describe("recruitment, staffing, service and technology operations", () => {
 });
 
 describe("administration, exports and security lifecycle", () => {
+  it("finds audit records by their underlying identifier when they have no generated reference number", async () => {
+    const contact = await post(
+      "vendor",
+      `/organizations/${org("vendor")}/contacts`,
+      {
+        name: "QA Audit Reference Contact",
+        email: "audit-reference@qa.example",
+        phone: "+91 9000000123",
+        role: "Procurement",
+        is_primary: false,
+      },
+      201,
+    );
+    const recordId = contact.id;
+    const result = await get("admin", `/admin/audit?q=${recordId}`);
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.items.every((row: any) => row.record_id === recordId)).toBe(
+      true,
+    );
+    expect(result.items.some((row: any) => !row.record_number)).toBe(true);
+    const filtered = await get(
+      "admin",
+      `/admin/audit?q=${recordId}&category=contacts`,
+    );
+    expect(filtered.total).toBeGreaterThan(0);
+    expect(
+      filtered.items.every(
+        (row: any) => row.module === "contacts" && row.record_id === recordId,
+      ),
+    ).toBe(true);
+  });
   it("creates one-time invitations and assigns only the requested external role", async () => {
     const invited = await post(
       "vendor",
