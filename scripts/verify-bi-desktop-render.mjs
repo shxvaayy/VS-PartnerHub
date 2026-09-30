@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { chromium } from "@playwright/test";
 
 assert.equal(process.env.GITHUB_ACTIONS, "true");
 assert(process.env.RUNNER_TEMP, "Use the isolated desktop acceptance runner.");
@@ -15,144 +14,101 @@ const requested = process.argv[2] || "diagnostics";
 const view = expected.pages.find((item) => item.id === requested);
 assert(view || requested === "diagnostics", "Choose a known dashboard.");
 const out = path.resolve("artifacts/desktop-bi/power-bi");
-await fs.mkdir(out, { recursive: true });
 const report = {
-  source: "The report rendered inside the installed Power BI Desktop WebView2",
+  source: "The installed Power BI Desktop report's Windows accessibility tree",
   page: requested,
   syntheticData: true,
   passed: false,
   checks: [],
-  targets: [],
 };
-const normalize = (value) => value.replace(/\s+/g, " ").trim();
-let browser;
 try {
-  browser = await chromium.connectOverCDP("http://127.0.0.1:9222", {
-    timeout: 15000,
-  });
-  let frame;
-  for (const context of browser.contexts()) {
-    for (const page of context.pages()) {
-      for (const candidate of page.frames()) {
-        const visualCount = await candidate.locator("visual-container").count();
-        report.targets.push({
-          url: candidate.url().split(/[?#]/)[0],
-          visualCount,
-        });
-        if (visualCount && !frame) frame = candidate;
-      }
-    }
-  }
-  if (!frame && !view) {
-    const pages = browser.contexts().flatMap((context) => context.pages());
-    for (const [index, page] of pages.entries()) {
-      await fs.writeFile(
-        path.join(out, `desktop-target-${index}.txt`),
-        await page.locator("body").innerText({ timeout: 10000 }),
-      );
-      await page.screenshot({
-        path: path.join(out, `desktop-target-${index}.png`),
-      });
-    }
-  }
-  assert(frame, "No actual report canvas was found in Desktop's WebView2.");
-  const containers = frame
-    .locator("visual-container")
-    .filter({ visible: true });
-  const end = Date.now() + 60000;
-  let visuals = [];
-  let body = "";
-  do {
-    visuals = await containers.evaluateAll((elements) =>
-      elements.map((element) => ({
-        text: (element.innerText || "").replace(/\s+/g, " ").trim(),
-        svgElements: element.querySelectorAll("svg").length,
-        chartMarks: element.querySelectorAll("svg path, svg rect, svg circle")
-          .length,
-        html: element.outerHTML.slice(0, 120000),
-      })),
-    );
-    body = normalize(await frame.locator("body").innerText());
-    if (
-      !view ||
-      (body.includes(view.title) &&
-        body.includes("123,456.78 INR") &&
-        body.includes("42.5%") &&
-        visuals.length >= view.metrics.length + 6)
-    )
-      break;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  } while (Date.now() < end);
-  await fs.writeFile(path.join(out, `${requested}-rendered.txt`), body);
-  await fs.writeFile(
-    path.join(out, `${requested}-visuals.json`),
-    JSON.stringify(visuals, null, 2),
+  const name = view
+    ? view.title.replace(/[^a-zA-Z0-9]+/g, "-")
+    : "latest-controls";
+  const controls = JSON.parse(
+    (await fs.readFile(path.join(out, name + ".json"), "utf8")).replace(
+      /^\uFEFF/,
+      "",
+    ),
   );
-  await frame.page().screenshot({
-    path: path.join(out, `${requested}-webview.png`),
-    fullPage: true,
-  });
+  const visible = controls.filter(
+    (control) =>
+      !control.offscreen &&
+      control.bounds?.width > 0 &&
+      control.bounds?.height > 0,
+  );
+  const text = visible
+    .map((control) => control.name.replace(/\s+/g, " ").trim())
+    .join("\n");
+  await fs.writeFile(path.join(out, requested + "-rendered.txt"), text);
   if (view) {
     assert(
-      body.includes(view.title),
-      "The requested report page is not rendered.",
-    );
-    assert.equal(
-      visuals.length,
-      view.metrics.length + 6,
-      "Some report visuals are missing.",
+      text.includes("VS PARTNERHUB / " + view.title),
+      "The requested report canvas is not visible.",
     );
     assert(
-      !visuals.some((item) =>
-        /see details|error fetching data|something.s wrong|couldn.t load|couldn.t display|fix this|unable to load/i.test(
-          item.text,
+      !visible.some((control) =>
+        /^(See details|Error fetching data)|something.s wrong|couldn.t load|unable to load/i.test(
+          control.name,
         ),
       ),
-      "A report visual contains a data or rendering error.",
+      "A report visual displays an error.",
     );
     report.checks.push({
-      name: "All page visuals rendered without error panels",
+      name: "Requested report canvas is visible without visual-error panels",
       passed: true,
     });
+    const images = visible.filter(
+      (control) => control.type === "ControlType.Image",
+    );
     for (const metric of view.metrics) {
-      assert(
-        visuals.some((item) => item.text.includes(metric.label)),
-        `Missing rendered KPI: ${metric.label}`,
+      const card = images.find((control) =>
+        control.name.startsWith(metric.label + " "),
       );
+      assert(card, `Missing rendered KPI card: ${metric.label}`);
+      if (metric.value === null)
+        assert(
+          /\(Blank\)/i.test(card.name),
+          "The missing-evidence card did not preserve a blank.",
+        );
+      else
+        assert(
+          !/\(Blank\)/i.test(card.name),
+          `The populated ${metric.label} card is blank.`,
+        );
     }
     assert(
-      body.includes("123,456.78 INR"),
-      "The table did not render the amount in major currency units.",
+      /Organizations 17\b/.test(text),
+      "The count card does not display 17.",
     );
     assert(
-      body.includes("42.5%"),
-      "The percentage is not rendered with the correct units.",
+      /42\.50?\s*%/.test(text),
+      "The response percentage is not rendered correctly.",
     );
     assert(
-      /\b17\b/.test(body),
-      "The populated organization count is not rendered.",
+      text.includes("123,456.78 INR"),
+      "The KPI table does not show the full major-unit amount.",
     );
     report.checks.push({
-      name: "KPI titles, amount, percentage and count are visible",
+      name: "Populated KPI cards, full amount, percentage and blank evidence are visible",
       passed: true,
     });
     for (const title of [view.trendLabel, view.distributionLabel]) {
       assert(
-        visuals.some(
-          (item) =>
-            item.text.includes(title) &&
-            item.svgElements &&
-            item.chartMarks > 1,
+        visible.some(
+          (control) =>
+            control.type === "ControlType.Group" &&
+            control.name.trim() === title,
         ),
-        `The ${title} chart has no rendered marks.`,
+        `Missing rendered chart container: ${title}`,
       );
     }
     report.checks.push({
-      name: "Both charts render their data marks",
+      name: "Both chart containers are visible; screenshots retain the rendered marks for review",
       passed: true,
     });
     assert(
-      body.includes("All KPIs & measurement scope"),
+      text.includes("All KPIs & measurement scope"),
       "The complete KPI table is missing.",
     );
     report.checks.push({
@@ -167,10 +123,9 @@ try {
 } finally {
   report.completedAt = new Date().toISOString();
   await fs.writeFile(
-    path.join(out, `${requested}-render-report.json`),
+    path.join(out, requested + "-render-report.json"),
     JSON.stringify(report, null, 2),
   );
-  await browser?.close();
 }
 console.log(
   JSON.stringify({

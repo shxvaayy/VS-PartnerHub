@@ -28,6 +28,8 @@ using System.Runtime.InteropServices;
 public static class PartnerHubDesktop {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
 }
 '@
 function Capture-Screen([string]$Name) {
@@ -56,14 +58,22 @@ function Read-Controls($Window) {
     try {
       $current = $element.Current
       if ($current.Name) {
-        $result += [pscustomobject]@{ name = $current.Name; type = $current.ControlType.ProgrammaticName; enabled = $current.IsEnabled; offscreen = $current.IsOffscreen; element = $element }
+        $rectangle = $current.BoundingRectangle
+        $ancestors = @()
+        $parent = $element
+        for ($depth = 0; $depth -lt 5; $depth++) {
+          $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($parent)
+          if ($null -eq $parent) { break }
+          if ($parent.Current.Name) { $ancestors += $parent.Current.Name }
+        }
+        $result += [pscustomobject]@{ name = $current.Name; type = $current.ControlType.ProgrammaticName; enabled = $current.IsEnabled; offscreen = $current.IsOffscreen; bounds = @{ x = $rectangle.X; y = $rectangle.Y; width = $rectangle.Width; height = $rectangle.Height }; ancestors = $ancestors; element = $element }
       }
     } catch {}
   }
   return $result
 }
 function Save-Controls([string]$Name, $Controls) {
-  @($Controls | Select-Object name, type, enabled, offscreen) | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $out "$Name.json") -Encoding UTF8
+  @($Controls | Select-Object name, type, enabled, offscreen, bounds, ancestors) | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $out "$Name.json") -Encoding UTF8
 }
 function Invoke-Control($Control) {
   $pattern = $null
@@ -73,9 +83,35 @@ function Invoke-Control($Control) {
   if ($Control.element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
     $pattern.Select(); return $true
   }
+  # Some Desktop ribbon controls provide a clickable point without Invoke.
+  $point = [System.Windows.Point]::new()
+  if ($Control.element.TryGetClickablePoint([ref]$point)) {
+    [PartnerHubDesktop]::SetCursorPos([int]$point.X, [int]$point.Y) | Out-Null
+    [PartnerHubDesktop]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+    [PartnerHubDesktop]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    return $true
+  }
   return $false
 }
+function Dismiss-Tips($Controls) {
+  foreach ($label in @('Collaborate and share', 'Optimize your report for mobile')) {
+    $tip = $Controls | Where-Object { $_.name -eq $label -and -not $_.offscreen } | Select-Object -First 1
+    if (-not $tip) { continue }
+    $parent = $tip.element
+    for ($depth = 0; $depth -lt 5; $depth++) {
+      $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($parent)
+      if ($null -eq $parent) { break }
+      $bounds = $parent.Current.BoundingRectangle
+      if ($bounds.Width -gt 750 -or $bounds.Height -gt 400) { break }
+      $close = @(Read-Controls $parent) | Where-Object { $_.name -eq 'Close' -and $_.type -eq 'ControlType.Button' -and -not $_.offscreen } | Select-Object -First 1
+      if ($close) { Invoke-Control $close | Out-Null; break }
+    }
+  }
+}
 try {
+  if (Get-Command Set-DisplayResolution -ErrorAction SilentlyContinue) {
+    try { Set-DisplayResolution -Width 1920 -Height 1080 -Force | Out-Null } catch { Write-Host 'Keeping the available runner display resolution.' }
+  }
   $installer = Join-Path $env:RUNNER_TEMP "partnerhub-$Platform-setup.exe"
   if (-not (Test-Path $installer) -or (Get-FileHash $installer -Algorithm SHA256).Hash -ne $tool.sha256) {
     Write-Host "Downloading official $($tool.name) $($tool.version)."
@@ -104,7 +140,6 @@ try {
     $application = Join-Path $env:ProgramFiles 'Microsoft Power BI Desktop/bin/PBIDesktop.exe'
     $script:processName = 'PBIDesktop'
     $workbook = (Resolve-Path 'artifacts/desktop-bi/input/power-bi/VS PartnerHub.pbip').Path
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1'
   } else {
     $application = (Get-ChildItem (Join-Path $env:ProgramFiles 'Tableau') -Filter tabreader.exe -Recurse | Select-Object -First 1).FullName
     $script:processName = 'tabreader'
@@ -126,12 +161,13 @@ try {
     Save-Controls 'latest-controls' $controls
     Capture-Screen 'latest-screen'
     if ($controls.name -contains 'Issues were found') { throw 'Power BI Desktop rejected the report project. Inspect the retained error dialog.' }
+    Dismiss-Tips $controls
     foreach ($label in @('Not now', 'Continue without signing in', 'Apply changes')) {
       $action = $controls | Where-Object { $_.name -eq $label -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
       if ($action) { Invoke-Control $action | Out-Null }
     }
     if ($Platform -eq 'power-bi' -and -not $refreshed) {
-      $refresh = $controls | Where-Object { $_.name -eq 'Refresh' -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
+      $refresh = $controls | Where-Object { $_.name -in @('Refresh now', 'Refresh') -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Sort-Object @{ Expression = { $_.name -eq 'Refresh now' }; Descending = $true } | Select-Object -First 1
       if ($refresh -and (Invoke-Control $refresh)) { $refreshed = $true; Write-Host 'Requested snapshot refresh in Power BI Desktop.' }
     }
     $titles = @((Get-Content artifacts/desktop-bi/input/expected.json -Raw | ConvertFrom-Json).pages.title)
@@ -144,6 +180,7 @@ try {
   $report.visibleDashboardTitles = @($titles | Where-Object { $controls.name -contains $_ })
   $checks.Add(@{ name = 'Workbook opened in the installed desktop application'; passed = $true })
   if ($report.visibleDashboardTitles.Count -ne 8) { throw 'All eight dashboard tabs were not available. Inspect the retained application screenshot and control tree.' }
+  if ($Platform -eq 'power-bi' -and -not $refreshed) { throw 'The actual Desktop snapshot Refresh action was not available.' }
   $checks.Add(@{ name = 'Eight dashboard tabs are exposed by the actual desktop application'; passed = $true })
   if ($Platform -eq 'power-bi') {
     # Refresh runs asynchronously. Model validation must inspect its loaded data,
@@ -162,7 +199,9 @@ try {
     $checks.Add(@{ name = 'Desktop refreshed source rows, DAX values and display units match the offline fixture'; passed = $true })
   }
   foreach ($title in $titles) {
-    $control = $controls | Where-Object { $_.name -eq $title } | Select-Object -First 1
+    $controls = @(Read-Controls (Get-AppWindow))
+    Dismiss-Tips $controls
+    $control = $controls | Where-Object { $_.name -eq $title -and $_.type -eq 'ControlType.TabItem' } | Select-Object -First 1
     if (-not (Invoke-Control $control)) { throw "Desktop tab selection is unavailable for $title." }
     Start-Sleep -Seconds 3
     Capture-Screen ($title -replace '[^a-zA-Z0-9]+', '-')
@@ -170,9 +209,17 @@ try {
     Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
     if ($Platform -eq 'power-bi') {
       $page = (Get-Content artifacts/desktop-bi/input/expected.json -Raw | ConvertFrom-Json).pages | Where-Object { $_.title -eq $title }
-      & node scripts/verify-bi-desktop-render.mjs $page.id
+      $renderDeadline = (Get-Date).AddSeconds(30)
+      do {
+        $controls = @(Read-Controls (Get-AppWindow))
+        Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
+        & node scripts/verify-bi-desktop-render.mjs $page.id
+        if ($LASTEXITCODE -eq 0) { break }
+        Start-Sleep -Seconds 2
+      } while ((Get-Date) -lt $renderDeadline)
       if ($LASTEXITCODE -ne 0) { throw "The actual Desktop visuals did not pass for $title." }
     }
+    Capture-Screen ($title -replace '[^a-zA-Z0-9]+', '-')
   }
   $checks.Add(@{ name = 'Every dashboard can be selected and has a retained desktop screenshot'; passed = $true })
   $report.desktopAcceptanceCompleted = $Platform -eq 'power-bi'

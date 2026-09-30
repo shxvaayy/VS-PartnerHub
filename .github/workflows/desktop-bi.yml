@@ -14,6 +14,7 @@ on:
       - scripts/prepare-bi-desktop.ts
       - scripts/*bi-desktop*
       - scripts/desktop-bi-tools.json
+      - scripts/desktop-bi-model/**
       - tests/fixtures/analytics-report.ts
       - .github/workflows/desktop-bi.yml
 permissions:
@@ -37,6 +38,13 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - uses: actions/setup-dotnet@v4
+        if: matrix.platform == 'power-bi'
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build the Microsoft ADOMD model verifier
+        if: matrix.platform == 'power-bi'
+        run: dotnet build scripts/desktop-bi-model/PartnerHub.DesktopModel.csproj --configuration Release -p:RestoreLockedMode=true
       - name: Prepare synthetic offline workbooks
         run: node --import tsx scripts/prepare-bi-desktop.ts
       - uses: actions/cache/restore@v4
