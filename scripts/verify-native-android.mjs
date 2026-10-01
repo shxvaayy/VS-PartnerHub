@@ -8,6 +8,8 @@ import { unzipSync, strFromU8 } from "fflate";
 import { startNativeFixture } from "./native-fixture.mjs";
 
 const pkg = "com.vijaysoftwaresolutions.partnerhub";
+const workspaceWindow =
+  /com\.vijaysoftwaresolutions\.partnerhub\/[^\s}]*MainActivity/;
 const expect = playwrightExpect.configure({ timeout: 30000 });
 const out = path.resolve("artifacts/native-verification/android-acceptance");
 await fs.mkdir(out, { recursive: true });
@@ -16,6 +18,7 @@ const checks = [],
   fileIntegrity = [],
   nativeWindows = [],
   hostAlerts = [];
+const dismissedHostWindows = new Set();
 let fixture, device, page;
 const adb = (args) =>
   execFileSync("adb", args, {
@@ -34,39 +37,30 @@ async function focusedWindow() {
   // A cold emulator can raise an unrelated launcher ANR. Recover only that
   // named host component; an application ANR must still fail acceptance.
   if (/Application (?:Error|Not Responding)/.test(focus)) {
-    adb([
-      "shell",
-      "uiautomator",
-      "dump",
-      "/sdcard/partnerhub-acceptance-window.xml",
-    ]);
-    const xml = adb([
-      "shell",
-      "cat",
-      "/sdcard/partnerhub-acceptance-window.xml",
-    ]);
+    // WindowManager can retain the closing window briefly. Never tap it twice
+    // or reuse an old UI dump after the native automation returns no root.
+    if (dismissedHostWindows.has(focus)) return "";
+    const title = await device.info({
+      pkg: "android",
+      res: "android:id/alertTitle",
+    });
     assert(
-      /Pixel Launcher[^"<]*responding/.test(xml),
+      /^Pixel Launcher isn't responding$/.test(title.text),
       "An application stopped responding; inspect the native failure evidence.",
     );
     assert(hostAlerts.length < 2, "The emulator launcher is not stable.");
-    const close = [...xml.matchAll(/<node\b[^>]*>/g)].find(
-      ([node]) =>
-        node.includes('package="android"') &&
-        node.includes('resource-id="android:id/aerr_close"'),
-    )?.[0];
-    const bounds = close?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
-    assert(bounds, "The named launcher alert has no Close app control.");
     const filename = `launcher-alert-${hostAlerts.length + 1}`;
-    await fs.writeFile(path.join(out, filename + ".xml"), xml);
+    await fs.writeFile(
+      path.join(out, filename + ".json"),
+      JSON.stringify({ focus, title }, null, 2),
+    );
     await device.screenshot({ path: path.join(out, filename + ".png") });
-    adb([
-      "shell",
-      "input",
-      "tap",
-      String(Math.round((Number(bounds[1]) + Number(bounds[3])) / 2)),
-      String(Math.round((Number(bounds[2]) + Number(bounds[4])) / 2)),
-    ]);
+    await device.tap({ pkg: "android", res: "android:id/aerr_close" });
+    await device.wait(
+      { pkg: "android", res: "android:id/alertTitle", text: title.text },
+      { state: "gone" },
+    );
+    dismissedHostWindows.add(focus);
     hostAlerts.push({ application: "Pixel Launcher", action: "Close app" });
     return "";
   }
@@ -96,10 +90,7 @@ async function dismissShareSheet(stage) {
   const location = page.url();
   await waitForNativeWindow(/ChooserActivity/, stage + " before Back");
   await device.shell("input keyevent KEYCODE_BACK");
-  await waitForNativeWindow(
-    /com\.vijaysoftwaresolutions\.partnerhub\/[^\s}]*MainActivity/,
-    stage + " dismissed",
-  );
+  await waitForNativeWindow(workspaceWindow, stage + " dismissed");
   await expect(page).toHaveURL(location);
 }
 async function readPrivateFile(file, source) {
@@ -152,6 +143,7 @@ async function readPrivateFile(file, source) {
   return bytes;
 }
 async function navigate(name) {
+  await waitForNativeWindow(workspaceWindow, "navigate " + name);
   await page
     .getByRole("button", { name: "Open navigation", exact: true })
     .click();
@@ -171,6 +163,7 @@ try {
   );
   await device.shell(`am force-stop ${pkg}`);
   await device.shell(`am start -n ${pkg}/.MainActivity`);
+  await waitForNativeWindow(workspaceWindow, "initial app launch");
   page = await (await device.webView({ pkg })).page();
   page.setDefaultTimeout(45000);
   page.on("pageerror", (error) => errors.push(error.message));
