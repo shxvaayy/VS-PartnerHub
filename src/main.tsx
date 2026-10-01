@@ -8,6 +8,7 @@ import "./home.css";
 import "./landing.css";
 import "./auth.css";
 import "./navigation.css";
+import "./procurement.css";
 import { initializeMobile } from "./lib/mobile";
 void initializeMobile().catch(() => {});
 import App from "./App";

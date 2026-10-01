@@ -59,6 +59,7 @@ jobs:
           path: |
             test-results/
             artifacts/local-verification/
+            artifacts/advanced-procurement/
             artifacts/tableau-verification/
             artifacts/analytics-verification/*Tableau*
           retention-days: 7

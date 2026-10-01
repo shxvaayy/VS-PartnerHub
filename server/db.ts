@@ -10,6 +10,7 @@ import { authSchema } from "./auth-schema.js";
 import { intelligenceSchema } from "./intelligence-schema.js";
 import { aiEfficiencySchema } from "./ai-efficiency-schema.js";
 import { cloudSchema } from "./cloud-schema.js";
+import { advancedProcurementSchema } from "./advanced-procurement-schema.js";
 import { attachDatabasePool } from "@vercel/functions";
 
 if (!config.databaseUrl)
@@ -401,6 +402,7 @@ export async function migrate() {
         "007_document_ai_review",
         "008_ai_efficiency",
         "009_cloud_runtime",
+        "010_advanced_procurement",
       ],
       getMigrationName: (migration: string) => migration,
       getMigration: async (name: string) => ({
@@ -421,7 +423,9 @@ export async function migrate() {
                         ? intelligenceSchema
                         : name === "008_ai_efficiency"
                           ? aiEfficiencySchema
-                          : cloudSchema,
+                          : name === "009_cloud_runtime"
+                            ? cloudSchema
+                            : advancedProcurementSchema,
         down: async () => {
           throw new Error(
             "Destructive rollback is intentionally unsupported. Restore a verified backup.",

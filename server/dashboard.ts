@@ -146,6 +146,7 @@ dashboardRouter.get("/dashboard", async (req, res) => {
 });
 dashboardRouter.get("/lookups", async (req, res) => {
   const kind = z.enum(modules).parse(req.query.kind);
+  const parentId = req.query.parent_id ? uuid.parse(req.query.parent_id) : null;
   assert(
     canCreate(req.user, kind) || can(req.user, kind, "edit"),
     403,
@@ -197,6 +198,10 @@ dashboardRouter.get("/lookups", async (req, res) => {
         parentTypes[kind]!.filter((m) => can(req.user, m)),
       );
     }
+    // Keep the selected, authorized source available when an older invoice or
+    // proposal is edited after more than 200 eligible records exist.
+    if (parentId)
+      q.orderByRaw("case when records.id = ? then 0 else 1 end", [parentId]);
     const rows = await q.orderBy("created_at", "desc").limit(200);
     for (const row of rows) {
       const parsed = serializeRecord(row);

@@ -52,6 +52,14 @@ async function transition(page: Page, status: string) {
   await modal(page)
     .getByLabel("Decision note")
     .fill("Reviewed during browser acceptance verification.");
+  if (status === "confirmed") {
+    await modal(page)
+      .getByLabel("Receipt / acceptance reference")
+      .fill("BROWSER-GRN-001");
+    await modal(page)
+      .getByRole("button", { name: "Accept remaining quantities" })
+      .click();
+  }
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/transition") && r.request().method() === "POST",
   );
@@ -781,7 +789,9 @@ test("mobile navigation supports the complete menu, keyboard dismissal and scope
     modal(page).getByRole("link", { name: "Overview", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await inspectAccessibility(page);
-  await modal(page).getByRole("link", { name: "RFQs", exact: true }).click();
+  await modal(page)
+    .getByRole("link", { name: "RFQs & RFPs", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/app\/rfqs$/);
   await expect(
     page.getByRole("dialog", { name: "Main navigation" }),
@@ -797,7 +807,9 @@ test("mobile navigation supports the complete menu, keyboard dismissal and scope
     await page
       .getByRole("button", { name: "Open navigation", exact: true })
       .click();
-    await modal(page).getByRole("link", { name: "RFQs", exact: true }).click();
+    await modal(page)
+      .getByRole("link", { name: "RFQs & RFPs", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/app\/rfqs$/);
     await expect(
       page.getByRole("dialog", { name: "Main navigation" }),

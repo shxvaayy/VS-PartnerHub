@@ -607,6 +607,7 @@ export function Audit() {
                 new Set([
                   ...Object.keys(defaultPermissions.super_admin),
                   "auth",
+                  "reconciliation",
                 ]),
               )
                 .sort()

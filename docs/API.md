@@ -2,6 +2,32 @@
 
 Base path: `/api`. JSON requests use `Content-Type: application/json`; document upload uses multipart form data. The browser and API share an origin. Browser operations use session cookies and CSRF. Scoped, read-only ERP bearer tokens are restricted to `/api/integration`; see [INTEGRATIONS.md](INTEGRATIONS.md).
 
+## Partner 360, RFPs, receiving and bank reconciliation
+
+See [ENTERPRISE_PROCUREMENT.md](ENTERPRISE_PROCUREMENT.md) for the business rules, scope and review workflow. These endpoints use browser sessions and CSRF; existing ERP/BI bearer endpoints remain under `/api/integration`.
+
+| Method     | Path                                           | Purpose                                                                                                                                |
+| ---------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| GET        | `/organizations/:id/360`                       | Authorized relationship view; optional `from`, `to`                                                                                    |
+| GET        | `/records/:kind/:id/receiving`                 | PO quantities, receipts and eligibility for acceptance/evidence entry                                                                  |
+| POST       | `/records/orders/:id/receiving`                | Historical acceptance for a fulfilled/closed PO: `{ version, type, receipt, note }`; type is `goods` or `service`                      |
+| GET        | `/records/invoices/:id/matching`               | Factual three-way results, exceptions and receipt evidence                                                                             |
+| GET / POST | `/records/quotations/:id/evaluation`           | Buyer RFP assessment; POST `{ quotation_version, version, technical_score, commercial_score, notes }`; initial assessment version is 0 |
+| GET / POST | `/reconciliation/accounts`                     | List or add scoped buyer bank account metadata                                                                                         |
+| GET        | `/reconciliation/accounts/:id/transactions`    | Filtered statement workbench; `page`, `limit`, `q`, `from`, `to`, `status`                                                             |
+| GET        | `/reconciliation/accounts/:id/export`          | CSV using the same filters; up to 10,000 rows                                                                                          |
+| POST       | `/reconciliation/accounts/:id/import-preview`  | Validate `{ file_name, csv }` without persisting                                                                                       |
+| POST       | `/reconciliation/accounts/:id/import`          | Atomically revalidate and import `{ file_name, csv }`                                                                                  |
+| GET        | `/reconciliation/transactions/:id`             | Statement row, eligible payments, allocation/reversal history and review activity; optional payment search `q`                         |
+| POST       | `/reconciliation/transactions/:id/allocations` | `{ version, note, allocations: [{ payment_id, amount }] }`; amount is in major currency units                                          |
+| POST       | `/reconciliation/transactions/:id/exception`   | `{ version, category, note }`; category is `bank_fee`, `refund`, `internal_transfer`, `other`, or `open`                               |
+| POST       | `/reconciliation/allocations/:id/reverse`      | `{ version, note }`; version refers to the bank statement row                                                                          |
+| GET        | `/reconciliation/payments/:id`                 | Buyer-only bank evidence linked to a payment                                                                                           |
+
+For delivery confirmation or approval of a PO service milestone, the existing transition request also requires `receipt: { reference, received_date, lines: [{ order_item_id, accepted_quantity, rejected_quantity }] }`. Accepted/rejected quantities support up to three decimal places. Receipts count only when the authorized workflow decision completes.
+
+PO invoice items require `source_item_id` referencing the ordered line. Record lists/exports accept `organization_id`; RFQ lists/exports also accept `solicitation_type=RFQ|RFP`. RFPs use the existing RFQ CRUD endpoint with additional scoped payload fields; see the generated payload dictionary. Account/statement amounts in API responses are integer minor currency units. `GET /lookups?kind=invoices&parent_id=...` retains the selected authorized source within the recent-record limit, so older invoices remain editable.
+
 ## Authentication and CSRF
 
 `POST /auth/login` takes `{ "email": "...", "password": "..." }` and sets an HttpOnly session cookie. The response includes `{ user, csrfToken }`. Send the cookie on subsequent calls and `X-CSRF-Token: <csrfToken>` on authenticated mutations.

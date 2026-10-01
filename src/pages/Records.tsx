@@ -66,6 +66,14 @@ import { moduleIcons } from "../components/icons";
 import RecordForm from "../components/RecordForm";
 import ActionMenu from "../components/ActionMenu";
 import ScrollRegion from "../components/ScrollRegion";
+import {
+  InvoiceMatchPanel,
+  PaymentReconciliationPanel,
+  ProposalEvaluationPanel,
+  ReceiptFields,
+  ReceivingPanel,
+  type ReceiptDraft,
+} from "../components/ProcurementEvidence";
 import { DocumentUpload } from "./Documents";
 import { ImportModal } from "../components/PartnerOperations";
 import SigningPanel from "../components/SigningPanel";
@@ -87,6 +95,18 @@ const prominentStatuses: Partial<Record<Module, string[]>> = {
   contracts: ["review", "active", "expired"],
   tickets: ["open", "in_progress", "resolved"],
 };
+function auditRemark(action: string, remarks: string) {
+  try {
+    const value = JSON.parse(remarks);
+    if (action === "proposal_evaluated")
+      return `Technical ${value.after.technical_score}/100 · Commercial ${value.after.commercial_score}/100 · Technical weight ${value.technical_weight}%. ${value.after.notes}`;
+    if (action === "receipt_confirmed")
+      return `${value.receipt} · ${value.reference} · ${formatDate(value.date)}. ${value.lines.filter((line: any) => line.accepted_quantity + line.rejected_quantity > 0).length} receipt lines recorded. ${value.note || ""}`;
+  } catch {
+    /* Historical events also contain plain text remarks. */
+  }
+  return remarks;
+}
 export default function Records() {
   const { kind: rawKind } = useParams(),
     kind = rawKind as Module,
@@ -108,11 +128,13 @@ export default function Records() {
       params.get("from") ||
       params.get("to") ||
       params.get("currency") ||
+      params.get("organization_id") ||
+      params.get("solicitation_type") ||
       params.get("requirement_type"),
     );
   const debouncedQuery = useDebouncedValue(query, kind);
   const result = useApi<any>(
-    `/records/${kind}?${queryString({ page, status, q: debouncedQuery, from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), limit: view === "board" ? 100 : 20 })}`,
+    `/records/${kind}?${queryString({ page, status, q: debouncedQuery, from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), organization_id: params.get("organization_id"), solicitation_type: params.get("solicitation_type"), limit: view === "board" ? 100 : 20 })}`,
     Boolean(definition),
   );
   if (!definition)
@@ -153,9 +175,15 @@ export default function Records() {
         title={definition.label}
         description={definition.description}
       >
+        {kind === "payments" &&
+          (user!.internal || user!.organization?.type === "client") && (
+            <Link className="button button-secondary" to="/app/reconciliation">
+              <GitCompareArrows size={16} /> Reconcile bank statement
+            </Link>
+          )}
         <a
           className="button button-secondary"
-          href={`/api/records/${kind}/export?${queryString({ status, q: params.get("q"), from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type") })}`}
+          href={`/api/records/${kind}/export?${queryString({ status, q: params.get("q"), from: params.get("from"), to: params.get("to"), currency: params.get("currency"), requirement_type: params.get("requirement_type"), organization_id: params.get("organization_id"), solicitation_type: params.get("solicitation_type") })}`}
         >
           <Download size={16} />
           Export
@@ -175,6 +203,20 @@ export default function Records() {
           </Button>
         )}
       </PageHeader>
+      {params.get("organization_id") && (
+        <div className="proc-filter-context">
+          <Link to={`/app/organizations/${params.get("organization_id")}/360`}>
+            Partner 360° <ArrowUpRight size={14} />
+          </Link>
+          <span>Showing this organization's authorized records</span>
+          <Button
+            variant="ghost"
+            onClick={() => setParam("organization_id", "")}
+          >
+            Clear partner filter
+          </Button>
+        </div>
+      )}
       {importing && (
         <ImportModal
           kind={kind as "catalog" | "requirements" | "candidates"}
@@ -223,6 +265,18 @@ export default function Records() {
             placeholder={`Search ${definition.label.toLowerCase()}…`}
           />
           <div className="filter-right">
+            {kind === "rfqs" && (
+              <select
+                className="compact-select"
+                aria-label="Filter by request type"
+                value={params.get("solicitation_type") || ""}
+                onChange={(e) => setParam("solicitation_type", e.target.value)}
+              >
+                <option value="">RFQs & RFPs</option>
+                <option value="RFQ">RFQ · Quotation requests</option>
+                <option value="RFP">RFP · Proposal requests</option>
+              </select>
+            )}
             <select
               className="compact-select"
               aria-label="Filter by status"
@@ -523,10 +577,14 @@ export default function Records() {
         <RecordForm
           kind={kind}
           parentId={params.get("parent") || undefined}
+          inviteId={
+            kind === "rfqs" ? params.get("invite") || undefined : undefined
+          }
           onClose={() => {
             const next = new URLSearchParams(params);
             next.delete("new");
             next.delete("parent");
+            next.delete("invite");
             setParams(next, { replace: true });
           }}
         />
@@ -558,6 +616,8 @@ export function RecordDetail() {
     documents = useApi<any>(`/documents?record_id=${id}`, tab === "documents");
   const [message, setMessage] = useState(""),
     [renewDate, setRenewDate] = useState("");
+  const [receipt, setReceipt] = useState<ReceiptDraft>();
+  useEffect(() => setReceipt(undefined), [transition, id]);
   if (result.isPending) return <Loading />;
   if (result.error)
     return <ErrorState error={result.error} retry={() => result.refetch()} />;
@@ -567,6 +627,11 @@ export function RecordDetail() {
     canWrite =
       user!.permissions[kind]?.includes("edit") ||
       user!.permissions[kind]?.includes("review");
+  const receivingDecision =
+    (kind === "deliveries" && transition === "confirmed") ||
+    (kind === "milestones" &&
+      r.parent_kind === "orders" &&
+      transition === "approved");
   const action = async () => {
     setBusy(true);
     setError(null);
@@ -578,7 +643,12 @@ export function RecordDetail() {
           body: JSON.stringify(
             renew
               ? { end_date: renewDate, note, version: r.version }
-              : { status: transition, note, version: r.version },
+              : {
+                  status: transition,
+                  note,
+                  version: r.version,
+                  ...(receivingDecision ? { receipt } : {}),
+                },
           ),
         },
       );
@@ -819,6 +889,45 @@ export function RecordDetail() {
           <div className="detail-tabs">
             {[
               { key: "overview", Icon: FileText, title: "Overview" },
+              ...(kind === "invoices"
+                ? [
+                    {
+                      key: "matching",
+                      Icon: GitCompareArrows,
+                      title: "Three-way match",
+                    },
+                  ]
+                : []),
+              ...(["orders", "deliveries"].includes(kind) ||
+              (kind === "milestones" && r.parent_kind === "orders")
+                ? [
+                    {
+                      key: "receiving",
+                      Icon: Check,
+                      title: "Receipts & acceptance",
+                    },
+                  ]
+                : []),
+              ...(kind === "quotations" &&
+              buyer &&
+              r.parent_solicitation_type === "RFP"
+                ? [
+                    {
+                      key: "evaluation",
+                      Icon: GitCompareArrows,
+                      title: "Proposal evaluation",
+                    },
+                  ]
+                : []),
+              ...(kind === "payments" && buyer
+                ? [
+                    {
+                      key: "reconciliation",
+                      Icon: GitCompareArrows,
+                      title: "Bank reconciliation",
+                    },
+                  ]
+                : []),
               { key: "documents", Icon: Paperclip, title: "Documents" },
               {
                 key: "conversation",
@@ -849,6 +958,16 @@ export function RecordDetail() {
           {tab === "signatures" && kind === "contracts" && (
             <SigningPanel record={r} />
           )}
+          {tab === "matching" && kind === "invoices" && (
+            <InvoiceMatchPanel record={r} />
+          )}
+          {tab === "receiving" && <ReceivingPanel record={r} />}
+          {tab === "evaluation" && kind === "quotations" && buyer && (
+            <ProposalEvaluationPanel record={r} />
+          )}
+          {tab === "reconciliation" && kind === "payments" && buyer && (
+            <PaymentReconciliationPanel record={r} />
+          )}
           {tab === "overview" && (
             <div className="detail-content">
               {r.payload.description && (
@@ -868,6 +987,11 @@ export function RecordDetail() {
                       f.key !== "description" &&
                       r.payload[f.key] !== undefined &&
                       r.payload[f.key] !== "" &&
+                      !(
+                        f.rfp &&
+                        r.payload.solicitation_type !== "RFP" &&
+                        r.parent_solicitation_type !== "RFP"
+                      ) &&
                       !(f.hiring && r.payload.requirement_type !== "hiring"),
                   )
                   .map((f) => (
@@ -1114,7 +1238,9 @@ export function RecordDetail() {
                                 <Badge status={e.new_status} />
                               </span>
                             )}
-                          {e.remarks && <small>{e.remarks}</small>}
+                          {e.remarks && (
+                            <small>{auditRemark(e.action, e.remarks)}</small>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1224,6 +1350,7 @@ export function RecordDetail() {
       )}{" "}
       {(transition || renew) && (
         <Modal
+          wide={receivingDecision}
           title={
             renew
               ? "Renew this contract"
@@ -1247,6 +1374,13 @@ export function RecordDetail() {
           >
             <div className="modal-body form-stack">
               <FormError error={error} />
+              {receivingDecision && (
+                <ReceiptFields
+                  record={r}
+                  value={receipt}
+                  onChange={setReceipt}
+                />
+              )}
               {renew && (
                 <Field label="New end date" required>
                   <Input
@@ -1409,6 +1543,37 @@ export function Comparison() {
                     label: "Valid until",
                     value: (q: WorkRecord) => formatDate(q.payload.validity),
                   },
+                  ...(rfq.payload.solicitation_type === "RFP"
+                    ? [
+                        {
+                          label: "Technical proposal",
+                          value: (q: WorkRecord) =>
+                            q.payload.technical_proposal || "Not provided",
+                        },
+                        {
+                          label: "Implementation plan",
+                          value: (q: WorkRecord) =>
+                            q.payload.implementation_plan || "Not provided",
+                        },
+                        {
+                          label: "Compliance response",
+                          value: (q: WorkRecord) =>
+                            q.payload.compliance_response || "Not provided",
+                        },
+                        {
+                          label: "Assumptions & exclusions",
+                          value: (q: WorkRecord) =>
+                            q.payload.assumptions || "None stated",
+                        },
+                        {
+                          label: "Buyer evaluation",
+                          value: (q: any) =>
+                            q.proposal_evaluation?.evaluation
+                              ? `${q.proposal_evaluation.evaluation.weighted_score.toFixed(1)} / 100 · ${q.proposal_evaluation.evaluation.current ? "Current" : "Needs reassessment"}`
+                              : "Not assessed",
+                        },
+                      ]
+                    : []),
                   ...rfq.items.map((item: any, i: number) => ({
                     label: `${item.name} · ${item.quantity} ${item.unit}`,
                     value: (q: WorkRecord) =>

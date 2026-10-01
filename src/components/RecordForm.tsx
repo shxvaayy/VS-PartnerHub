@@ -9,7 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { api, useApi } from "../lib/api";
+import { api, queryString, useApi } from "../lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import {
@@ -55,19 +55,23 @@ export default function RecordForm({
   record,
   onClose,
   parentId,
+  inviteId,
   draft,
 }: {
   kind: Module;
   record?: WorkRecord;
   onClose: () => void;
   parentId?: string;
+  inviteId?: string;
   draft?: { title: string; payload: Record<string, any>; items?: LineItem[] };
 }) {
   const { user } = useAuth(),
     toast = useToast(),
     navigate = useNavigate(),
     client = useQueryClient();
-  const lookups = useApi<any>(`/lookups?kind=${kind}`),
+  const lookups = useApi<any>(
+      `/lookups?${queryString({ kind, parent_id: record?.parent_id || parentId })}`,
+    ),
     settings = useApi<any>("/admin/settings");
   const masterData = useApi<any>("/master-data");
   const [title, setTitle] = useState(record?.title || draft?.title || ""),
@@ -97,7 +101,7 @@ export default function RecordForm({
           : []),
     ),
     [invitations, setInvitations] = useState<string[]>(
-      record?.invitations || [],
+      record?.invitations || (inviteId ? [inviteId] : []),
     );
   const [error, setError] = useState<unknown>(),
     [busy, setBusy] = useState(false),
@@ -107,8 +111,18 @@ export default function RecordForm({
   const source = lookups.data?.parents?.find(
     (r: WorkRecord) => r.id === parent,
   );
-  const linkedItems = ["orders", "invoices"].includes(kind),
+  const linkedItems =
+      kind === "orders" ||
+      (kind === "invoices" &&
+        (source?.kind || record?.parent_kind) === "contracts"),
     quoteItems = kind === "quotations";
+  const invoiceItems = kind === "invoices" && !linkedItems;
+  const rfp =
+    kind === "rfqs"
+      ? payload.solicitation_type === "RFP"
+      : kind === "quotations" &&
+        (source?.payload.solicitation_type ||
+          record?.parent_solicitation_type) === "RFP";
   const set = (key: string, value: any) =>
     setPayload((p) => ({ ...p, [key]: value }));
   const chooseParent = (id: string) => {
@@ -139,8 +153,10 @@ export default function RecordForm({
       );
     if (["rfqs", "orders", "invoices", "quotations"].includes(kind))
       setItems(
-        (row.items || []).map(({ id: _id, ...item }) => ({
+        (row.items || []).map(({ id: sourceId, ...item }) => ({
           ...item,
+          source_item_id:
+            kind === "invoices" && row.kind === "orders" ? sourceId : null,
           ...(kind === "quotations" ? { unit_price: 0 } : {}),
         })),
       );
@@ -160,6 +176,8 @@ export default function RecordForm({
         result.delivery_date = row.payload.required_date;
       if (kind === "orders" && row.payload.delivery_date)
         result.delivery_date = row.payload.delivery_date;
+      if (kind === "invoices")
+        result.delivery_charges = row.payload.delivery_charges || 0;
       if (kind === "demos") {
         result.contact_name = user!.name;
         result.contact_email = user!.email;
@@ -184,7 +202,7 @@ export default function RecordForm({
       }
       if (
         record?.payload.delivery_charges !== undefined &&
-        ["orders", "invoices", "contracts"].includes(kind)
+        ["orders", "contracts"].includes(kind)
       )
         normalized.delivery_charges = record.payload.delivery_charges;
       if (kind === "candidates" && !buyerSide)
@@ -236,6 +254,7 @@ export default function RecordForm({
     }
   };
   const renderField = (f: FieldDef) => {
+    if (f.rfp && !rfp) return null;
     if (f.hiring && payload.requirement_type !== "hiring") return null;
     if (
       kind === "candidates" &&
@@ -365,7 +384,7 @@ export default function RecordForm({
           100,
       0,
     ) +
-    Number(payload.delivery_charges || source?.payload.delivery_charges || 0) *
+    Number(payload.delivery_charges ?? source?.payload.delivery_charges ?? 0) *
       100;
   return (
     <Modal
@@ -607,9 +626,11 @@ export default function RecordForm({
                         <p>
                           {linkedItems
                             ? "Commercial values are copied from the approved source record."
-                            : quoteItems
-                              ? "Quote the requested quantities. Totals are calculated on the server."
-                              : "Add clear specifications and quantities for each item."}
+                            : invoiceItems
+                              ? "Confirm the actual invoice quantities, prices and charges. Each line is checked against the PO and buyer-accepted receipts."
+                              : quoteItems
+                                ? "Quote the requested quantities. Totals are calculated on the server."
+                                : "Add clear specifications and quantities for each item."}
                         </p>
                       </div>
                       {!linkedItems && !quoteItems && (
@@ -625,6 +646,7 @@ export default function RecordForm({
                     </div>
                     {!linkedItems &&
                       !quoteItems &&
+                      !invoiceItems &&
                       lookups.data?.catalog.length > 0 && (
                         <select
                           className="input catalog-import"
@@ -670,6 +692,43 @@ export default function RecordForm({
                             {String(index + 1).padStart(2, "0")}
                           </span>
                           <div className="line-item-fields">
+                            {invoiceItems && (
+                              <Field
+                                label="Linked purchase order line"
+                                required
+                              >
+                                <select
+                                  className="input"
+                                  aria-label={`PO line for invoice item ${index + 1}`}
+                                  required
+                                  value={item.source_item_id || ""}
+                                  onChange={(e) =>
+                                    setItems((all) =>
+                                      all.map((line, n) =>
+                                        n === index
+                                          ? {
+                                              ...line,
+                                              source_item_id: e.target.value,
+                                            }
+                                          : line,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <option value="">
+                                    Choose the agreed PO line
+                                  </option>
+                                  {(source?.items || []).map(
+                                    (line: LineItem, n: number) => (
+                                      <option key={line.id} value={line.id}>
+                                        {n + 1}. {line.name} · {line.quantity}{" "}
+                                        {line.unit}
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+                              </Field>
+                            )}
                             {quoteItems && lookups.data?.catalog.length > 0 && (
                               <div className="catalog-line-choice">
                                 <select

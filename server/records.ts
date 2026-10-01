@@ -16,9 +16,43 @@ import {
   isBuyer,
 } from "./record-service.js";
 import { amendContract, transitionRecord } from "./workflows.js";
+import { receiptSchema } from "./receiving.js";
+import { proposalEvaluation } from "./proposals.js";
 import { audit, notifyOrganizations } from "./events.js";
 export const recordsRouter = Router();
 recordsRouter.use(authenticated);
+function relationshipFilter(
+  query: ReturnType<typeof db>,
+  input: Record<string, unknown>,
+  kind: string,
+) {
+  if (input.organization_id) {
+    const id = uuid.parse(input.organization_id);
+    query.where((q) =>
+      q
+        .where("records.owner_org_id", id)
+        .orWhere("records.buyer_org_id", id)
+        .orWhere("records.partner_org_id", id)
+        .orWhereExists(
+          db("record_invitations")
+            .whereRaw("record_invitations.record_id = records.id")
+            .where("record_invitations.organization_id", id),
+        ),
+    );
+  }
+  if (kind === "rfqs" && input.solicitation_type) {
+    const type = z.enum(["RFQ", "RFP"]).parse(input.solicitation_type);
+    query.where((q) => {
+      q.where(
+        "records.payload",
+        "like",
+        '%"solicitation_type":"' + type + '"%',
+      );
+      if (type === "RFQ")
+        q.orWhere("records.payload", "not like", '%"solicitation_type":%');
+    });
+  }
+}
 export const csv = (rows: unknown[][]) =>
   "\uFEFF" +
   rows
@@ -37,6 +71,7 @@ recordsRouter.get("/:kind/export", async (req, res) => {
   assert(can(req.user, kind), 403, "Your role cannot access this module.");
   const p = pagination.parse(req.query),
     query = scopeRecords(db("records").where("records.kind", kind), req.user);
+  relationshipFilter(query, req.query, kind);
   if (p.status) query.where("records.status", p.status);
   if (p.currency) query.where("records.currency", p.currency);
   if (p.requirement_type && kind === "requirements")
@@ -99,6 +134,7 @@ recordsRouter.get("/:kind", async (req, res) => {
   const p = pagination.parse(req.query),
     parentId = req.query.parent_id ? uuid.parse(req.query.parent_id) : null;
   const q = scopeRecords(db("records").where("records.kind", kind), req.user);
+  relationshipFilter(q, req.query, kind);
   if (p.q)
     q.where((b) =>
       b
@@ -175,6 +211,7 @@ recordsRouter.post("/:kind/:id/transition", async (req, res) => {
       status: z.string().max(50),
       version: z.number().int().positive(),
       note: z.string().trim().max(2000).default(""),
+      receipt: receiptSchema.optional(),
     })
     .parse(req.body);
   const id = uuid.parse(req.params.id);
@@ -187,6 +224,7 @@ recordsRouter.post("/:kind/:id/transition", async (req, res) => {
       input.status,
       input.version,
       input.note,
+      input.receipt,
     ),
   );
 });
@@ -237,10 +275,14 @@ recordsRouter.post("/:kind/:id/comments", async (req, res) => {
 });
 recordsRouter.get("/:kind/:id/history", async (req, res) => {
   const id = uuid.parse(req.params.id);
-  await accessibleRecord(id, req.user);
+  const record = await accessibleRecord(id, req.user);
   res.json({
     events: await db("audit_logs")
       .where({ record_id: id })
+      .modify((query) => {
+        if (!isBuyer(req.user, record))
+          query.whereNot("action", "proposal_evaluated");
+      })
       .orderBy("created_at", "desc"),
     versions: (
       await db("record_versions")
@@ -277,7 +319,18 @@ recordsRouter.get("/rfqs/:id/compare", async (req, res) => {
   const quotations = await Promise.all(
     records.map((r: any) => recordDetail(r.id, req.user)),
   );
-  res.json({ rfq, quotations });
+  res.json({
+    rfq,
+    quotations: await Promise.all(
+      quotations.map(async (quotation) => ({
+        ...quotation,
+        proposal_evaluation:
+          rfq.payload.solicitation_type === "RFP"
+            ? await proposalEvaluation(quotation)
+            : null,
+      })),
+    ),
+  });
 });
 recordsRouter.post("/contracts/:id/renew", async (req, res) => {
   const data = z

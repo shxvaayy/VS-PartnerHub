@@ -154,6 +154,7 @@ export const registrationSchema = z
       });
   });
 export const lineItemSchema = z.object({
+  source_item_id: uuid.nullable().optional(),
   catalog_item_id: uuid.nullable().optional(),
   name: text(200).min(1),
   specification: text(3000).default(""),

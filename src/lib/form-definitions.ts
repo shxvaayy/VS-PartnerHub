@@ -20,6 +20,7 @@ export type FieldDef = {
   full?: boolean;
   hint?: string;
   hiring?: boolean;
+  rfp?: boolean;
 };
 const field = (
   key: string,
@@ -80,8 +81,33 @@ export const formFields: Record<Module, FieldDef[]> = {
     },
   ],
   rfqs: [
+    select("solicitation_type", "Request type", ["RFQ", "RFP"]),
     category,
     description,
+    field("scope_of_work", "Scope of work & deliverables", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+      required: true,
+    }),
+    field("evaluation_criteria", "Evaluation criteria", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+      required: true,
+      hint: "Describe the technical and commercial evidence reviewers will assess.",
+    }),
+    field("technical_weight", "Technical evaluation weight (%)", {
+      type: "number",
+      default: 60,
+      rfp: true,
+      hint: "Commercial weight is 100 minus this value. Both must be greater than zero.",
+    }),
+    field("submission_instructions", "Proposal submission instructions", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+    }),
     date("deadline", "Response deadline", 14),
     date("required_date", "Required delivery date", 30),
     text("delivery_address", "Delivery address", true),
@@ -92,6 +118,28 @@ export const formFields: Record<Module, FieldDef[]> = {
   ],
   quotations: [
     description,
+    field("technical_proposal", "Technical proposal", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+      hint: "Explain the proposed solution and how it meets the scope.",
+    }),
+    field("implementation_plan", "Implementation plan", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+      hint: "Include delivery phases, milestones, resources and timelines.",
+    }),
+    field("compliance_response", "Compliance response", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+    }),
+    field("assumptions", "Assumptions & exclusions", {
+      type: "textarea",
+      full: true,
+      rfp: true,
+    }),
     date("delivery_date", "Promised delivery date", 21),
     date("validity", "Valid until", 30),
     { ...text("payment_terms", "Payment terms", true), default: "Net 30" },
@@ -141,6 +189,7 @@ export const formFields: Record<Module, FieldDef[]> = {
     date("invoice_date", "Invoice date", 0),
     date("due_date", "Due date", 30),
     text("payment_terms", "Payment terms"),
+    number("delivery_charges", "Invoiced delivery charges"),
     text("bank_name", "Bank name"),
     field("bank_account_last4", "Account last 4 digits", {
       hint: "Only the last four digits. Upload full bank documents securely if required.",

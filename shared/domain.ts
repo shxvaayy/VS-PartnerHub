@@ -72,7 +72,7 @@ export const moduleDefinitions: Record<Module, ModuleDefinition> = {
     group: "procurement",
   },
   rfqs: {
-    label: "RFQs",
+    label: "RFQs & RFPs",
     singular: "RFQ",
     prefix: "RFQ",
     description: "The right requirements. The right partners.",
@@ -676,6 +676,7 @@ export const categories = [
 ];
 export interface LineItem {
   id?: string;
+  source_item_id?: string | null;
   catalog_item_id?: string | null;
   name: string;
   specification?: string;
@@ -736,6 +737,8 @@ export interface WorkRecord {
   buyer_name?: string;
   partner_name?: string;
   parent_number?: string;
+  parent_kind?: Module;
+  parent_solicitation_type?: "RFQ" | "RFP";
   items?: LineItem[];
   invitations?: string[];
   allowed_transitions?: string[];

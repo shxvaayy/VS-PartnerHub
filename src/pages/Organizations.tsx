@@ -631,6 +631,12 @@ export function OrganizationProfile({ own = false }: { own?: boolean }) {
             </div>
           </div>
           <div className="company-hero-actions">
+            <Link
+              className="button button-secondary"
+              to={`/app/organizations/${id}/360`}
+            >
+              Partner 360° <ArrowUpRight size={16} />
+            </Link>
             {canEdit && (
               <label className="button button-secondary logo-upload">
                 Upload logo

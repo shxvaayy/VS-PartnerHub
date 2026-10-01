@@ -16,6 +16,7 @@ import { authCases } from "./auth.cases.js";
 import { runtimeCases } from "./runtime.cases.js";
 import { analyticsCases } from "./analytics.cases.js";
 import { complianceCases } from "./compliance.cases.js";
+import { advancedProcurementCases } from "./advanced-procurement.cases.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "vs-partnerhub-test-"));
 process.env.NODE_ENV = "test";
@@ -1006,7 +1007,25 @@ describe("connected procurement lifecycle and accounting invariants", () => {
     delivery = await transition("vendor", delivery, "in_transit");
     delivery = await transition("vendor", delivery, "delivered");
     await transition("vendor", delivery, "confirmed", 403);
-    delivery = await transition("buyer", delivery, "confirmed");
+    await transition("buyer", delivery, "confirmed", 422);
+    delivery = await post(
+      "buyer",
+      `/records/deliveries/${delivery.id}/transition`,
+      {
+        status: "confirmed",
+        version: delivery.version,
+        note: "All delivered monitors inspected and accepted.",
+        receipt: {
+          reference: "TEST-GRN-100",
+          received_date: future(0),
+          lines: order.items!.map((item) => ({
+            order_item_id: item.id,
+            accepted_quantity: item.quantity,
+            rejected_quantity: 0,
+          })),
+        },
+      },
+    );
     expect((await get("buyer", `/records/orders/${order.id}`)).status).toBe(
       "fulfilled",
     );
@@ -1019,8 +1038,15 @@ describe("connected procurement lifecycle and accounting invariants", () => {
           invoice_number: "TEST-INV-100",
           invoice_date: future(0),
           due_date: future(30),
+          delivery_charges: 50,
         },
-        { parent_id: order.id },
+        {
+          parent_id: order.id,
+          items: order.items!.map((item) => ({
+            ...item,
+            source_item_id: item.id,
+          })),
+        },
       ),
       201,
     );
@@ -1614,4 +1640,21 @@ complianceCases({
   },
   clients,
   org,
+});
+
+advancedProcurementCases({
+  get db() {
+    return db;
+  },
+  clients,
+  post,
+  patch,
+  get,
+  input,
+  line,
+  org,
+  rid,
+  future,
+  login,
+  transition,
 });

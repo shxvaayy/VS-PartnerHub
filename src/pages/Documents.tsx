@@ -39,7 +39,7 @@ import DocumentExtractionReview, {
   type ExtractionReviewInput,
 } from "../components/DocumentExtractionReview";
 export default function Documents({
-  organizationId,
+  organizationId: suppliedOrganizationId,
   embedded = false,
 }: {
   organizationId?: string;
@@ -47,6 +47,9 @@ export default function Documents({
 }) {
   const [params] = useSearchParams(),
     opened = useRef("");
+  const organizationId =
+    suppliedOrganizationId ||
+    (!embedded ? params.get("organization_id") || undefined : undefined);
   const focusedId = !embedded ? params.get("document") || "" : "";
   const focused = useApi<any>(`/documents/${focusedId}`, Boolean(focusedId));
   const { user } = useAuth(),

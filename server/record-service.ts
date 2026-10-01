@@ -62,6 +62,11 @@ export const payloadSchemas: Record<Module, z.ZodType<any>> = {
   rfqs: z
     .object({
       ...common,
+      solicitation_type: z.enum(["RFQ", "RFP"]).default("RFQ"),
+      scope_of_work: text(10000).default(""),
+      evaluation_criteria: text(10000).default(""),
+      submission_instructions: text(10000).default(""),
+      technical_weight: z.coerce.number().int().min(0).max(100).default(60),
       deadline: date,
       required_date: date,
       delivery_address: required,
@@ -73,6 +78,10 @@ export const payloadSchemas: Record<Module, z.ZodType<any>> = {
   quotations: z
     .object({
       ...common,
+      technical_proposal: text(10000).default(""),
+      implementation_plan: text(10000).default(""),
+      assumptions: text(10000).default(""),
+      compliance_response: text(10000).default(""),
       delivery_date: date,
       validity: date,
       payment_terms: required,
@@ -507,6 +516,7 @@ export async function getItems(
     .orderBy("position");
   return rows.map((r: any) => ({
     id: r.id,
+    source_item_id: r.source_item_id || null,
     catalog_item_id: r.catalog_item_id || null,
     name: r.name,
     specification: r.specification,
@@ -524,6 +534,7 @@ async function saveItems(k: Database, id: string, items: LineItem[]) {
       items.map((i, position) => ({
         id: randomUUID(),
         record_id: id,
+        source_item_id: i.source_item_id || null,
         catalog_item_id: i.catalog_item_id || null,
         name: i.name,
         specification: i.specification || "",
@@ -554,7 +565,7 @@ export async function recordDetail(
   const parent = record.parent_id
     ? await k("records")
         .where({ id: record.parent_id })
-        .select("number")
+        .select("number", "kind", "payload")
         .first()
     : null;
   const invitations = await k("record_invitations")
@@ -577,6 +588,11 @@ export async function recordDetail(
     partner_name: name(record.partner_org_id),
     owner_name: name(record.owner_org_id),
     parent_number: parent?.number,
+    parent_kind: parent?.kind,
+    parent_solicitation_type:
+      parent?.kind === "rfqs"
+        ? parseJson(parent.payload).solicitation_type || "RFQ"
+        : undefined,
     allowed_transitions: allowedTransitions(user, record),
     can_edit: canEdit(user, record),
     outstanding_minor:
@@ -710,7 +726,10 @@ export async function saveRecord(
         parent = serializeRecord(item);
       } else parent = await accessibleRecord(parentId, user, k);
     }
-    let items: LineItem[] = input.items;
+    let items: LineItem[] = input.items.map((item) => ({
+      ...item,
+      source_item_id: kind === "invoices" ? item.source_item_id || null : null,
+    }));
     let total = 0;
     const requiredParent: Partial<Record<Module, Module[]>> = {
       quotations: ["rfqs"],
@@ -913,9 +932,37 @@ export async function saveRecord(
         409,
         "This order or contract already has an invoice. Open the existing invoice.",
       );
-      items = await getItems(parentId!, k);
-      payload.delivery_charges = parent!.payload.delivery_charges || 0;
-      total = parent!.amount_minor;
+      if (parent!.kind === "orders") {
+        const ordered = await getItems(parentId!, k);
+        assert(
+          items.length > 0,
+          422,
+          "Enter the actual invoice lines and amounts, linked to their purchase order lines.",
+        );
+        assert(
+          new Set(items.map((item) => item.source_item_id)).size ===
+            items.length,
+          422,
+          "Each purchase order line can be billed only once on this invoice.",
+        );
+        for (const item of items) {
+          const source = ordered.find(
+            (line) => line.id === item.source_item_id,
+          );
+          assert(
+            source,
+            422,
+            "Link each invoice line to a line on this purchase order.",
+          );
+          // Catalog ownership comes from the agreed PO, never from user input.
+          item.catalog_item_id = source.catalog_item_id;
+        }
+        total = calculate(items, payload.delivery_charges || 0).total;
+      } else {
+        items = await getItems(parentId!, k);
+        payload.delivery_charges = parent!.payload.delivery_charges || 0;
+        total = parent!.amount_minor;
+      }
       assert(
         !(await k("records")
           .where({ kind, partner_org_id: partner })
@@ -1178,7 +1225,12 @@ export async function saveRecord(
         ...data,
         id,
         kind,
-        number: await nextNumber(k, moduleDefinitions[kind].prefix),
+        number: await nextNumber(
+          k,
+          kind === "rfqs" && payload.solicitation_type === "RFP"
+            ? "RFP"
+            : moduleDefinitions[kind].prefix,
+        ),
         status: moduleDefinitions[kind].statuses[0],
         owner_org_id: self,
         buyer_org_id: buyer,

@@ -24,6 +24,9 @@ import {
 } from "./business-integrations.js";
 import { masterDataRouter } from "./master-data.js";
 import { partnerOperationsRouter } from "./partner-operations.js";
+import { advancedProcurementRouter } from "./advanced-procurement.js";
+import { reconciliationRouter } from "./reconciliation.js";
+import { partner360Router } from "./partner-360.js";
 import { importsRouter } from "./imports.js";
 import { approvalsRouter } from "./approvals.js";
 import { signaturesRouter } from "./signatures.js";
@@ -111,6 +114,9 @@ export function createApp() {
   app.use("/api/inquiries", inquiriesRouter);
   app.use("/api/insights", insightsRouter);
   app.use("/api", partnerOperationsRouter);
+  app.use("/api/records", advancedProcurementRouter);
+  app.use("/api/organizations", partner360Router);
+  app.use("/api/reconciliation", reconciliationRouter);
   app.use("/api/master-data", masterDataRouter);
   app.use("/api/imports", importsRouter);
   app.use("/api/approvals", approvalsRouter);

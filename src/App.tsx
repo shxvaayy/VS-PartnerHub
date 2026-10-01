@@ -31,6 +31,8 @@ const Inquiries = lazy(() =>
 const Insights = lazy(() => import("./pages/Insights"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Reports = lazy(() => import("./pages/Reports"));
+const Partner360 = lazy(() => import("./pages/Partner360"));
+const Reconciliation = lazy(() => import("./pages/Reconciliation"));
 const Records = lazy(() => import("./pages/Records"));
 const RecordDetail = lazy(() =>
   import("./pages/Records").then((m) => ({ default: m.RecordDetail })),
@@ -144,6 +146,11 @@ export default function App() {
                   <Route path="inquiries" element={<Inquiries />} />
                   <Route path="insights" element={<Insights />} />
                   <Route path="reports" element={<Reports />} />
+                  <Route path="reconciliation" element={<Reconciliation />} />
+                  <Route
+                    path="organizations/:id/360"
+                    element={<Partner360 />}
+                  />
                   <Route path="organizations" element={<Organizations />} />
                   <Route
                     path="discovery"

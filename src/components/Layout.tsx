@@ -18,6 +18,7 @@ import {
   Headphones,
   HelpCircle,
   LayoutDashboard,
+  Landmark,
   LogOut,
   Menu,
   Search,
@@ -146,6 +147,7 @@ export default function Layout() {
     profile: "Company profile",
     team: "People & access",
     reports: "Reports & analytics",
+    reconciliation: "Bank reconciliation",
     audit: "Audit trail",
     roles: "Roles & permissions",
     settings: "Settings",
@@ -339,6 +341,9 @@ export default function Layout() {
                 .map((m) =>
                   nav(`/app/${m}`, moduleDefinitions[m].label, moduleIcons[m]),
                 )}
+              {has("payments") &&
+                (user.internal || user.organization?.type === "client") &&
+                nav("/app/reconciliation", "Bank reconciliation", Landmark)}
             </div>
           )}
           {extras.some(has) && (

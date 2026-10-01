@@ -5,6 +5,14 @@ import { audit, notifyOrganizations } from "./events.js";
 import { approvalGate, startApproval } from "./approvals.js";
 import { signaturesAllowActivation } from "./signatures.js";
 import {
+  captureReceipt,
+  invoiceMatch,
+  receivingSummary,
+  validateReceipt,
+  type ReceiptInput,
+} from "./receiving.js";
+import { proposalEvaluation } from "./proposals.js";
+import {
   accessibleRecord,
   allowedTransitions,
   getItems,
@@ -42,6 +50,7 @@ export async function transitionRecord(
   target: string,
   version: number,
   note: string,
+  receipt?: ReceiptInput,
 ) {
   return db.transaction(async (k) => {
     let lock = k("records").where({ id });
@@ -89,6 +98,20 @@ export async function transitionRecord(
       await signaturesAllowActivation(record, k);
     const effects: (() => Promise<void>)[] = [];
     if (record.kind === "rfqs" && target === "published") {
+      if (record.payload.solicitation_type === "RFP") {
+        assert(
+          record.payload.scope_of_work?.trim().length >= 20 &&
+            record.payload.evaluation_criteria?.trim().length >= 20,
+          422,
+          "Add a scope of work and evaluation criteria before publishing an RFP (at least 20 characters each).",
+        );
+        assert(
+          record.payload.technical_weight > 0 &&
+            record.payload.technical_weight < 100,
+          422,
+          "An RFP must allocate weight to both technical and commercial evaluation.",
+        );
+      }
       assert(
         record.payload.deadline >= today,
         422,
@@ -121,6 +144,14 @@ export async function transitionRecord(
         422,
         "The RFQ is no longer accepting quotation decisions.",
       );
+      if (target === "submitted" && parent?.payload.solicitation_type === "RFP")
+        assert(
+          record.payload.technical_proposal?.trim().length >= 20 &&
+            record.payload.implementation_plan?.trim().length >= 20 &&
+            record.payload.compliance_response?.trim().length >= 10,
+          422,
+          "Complete the technical proposal, implementation plan and compliance response before submitting an RFP response.",
+        );
       if (target === "submitted")
         assert(
           (record.status === "clarification" ||
@@ -130,6 +161,14 @@ export async function transitionRecord(
           "The quotation or RFQ deadline has passed.",
         );
       if (target === "approved") {
+        if (parent?.payload.solicitation_type === "RFP") {
+          const assessment = await proposalEvaluation(record, k);
+          assert(
+            assessment.evaluation?.current,
+            422,
+            "Record a buyer evaluation of the current proposal before awarding this RFP.",
+          );
+        }
         assert(
           record.payload.validity >= today,
           422,
@@ -202,28 +241,40 @@ export async function transitionRecord(
     }
     if (record.kind === "orders" && target === "fulfilled")
       assert(
-        (await k("records")
-          .where({ kind: "deliveries", parent_id: id, status: "confirmed" })
-          .first()) ||
-          (await k("records")
-            .where({ kind: "milestones", parent_id: id, status: "approved" })
-            .first()),
+        (await receivingSummary(id, k)).complete,
         422,
-        "Confirm a delivery or approve a service milestone before fulfilling this order.",
+        "Accept the full PO quantities through goods receipts or service acceptance before fulfilling this order.",
       );
-    if (record.kind === "deliveries" && target === "confirmed") {
+    if (
+      (record.kind === "deliveries" && target === "confirmed") ||
+      (record.kind === "milestones" &&
+        target === "approved" &&
+        parent?.kind === "orders")
+    ) {
       assert(
         parent && ["sent", "acknowledged"].includes(parent.status),
         422,
         "The purchase order must still be open.",
       );
-      await updateStatus(
-        k,
-        user,
-        parent,
-        "fulfilled",
-        `Delivery ${record.number} confirmed. ${note}`,
-      );
+      const data = await validateReceipt(k, parent, receipt);
+      effects.push(async () => {
+        const received = await captureReceipt(
+          k,
+          user,
+          record,
+          parent,
+          data,
+          note,
+        );
+        if (received.complete)
+          await updateStatus(
+            k,
+            user,
+            parent,
+            "fulfilled",
+            `Full PO quantity accepted through ${record.number}. ${note}`,
+          );
+      });
     }
     if (
       record.kind === "invoices" &&
@@ -238,6 +289,18 @@ export async function transitionRecord(
         422,
         "The linked order must be fulfilled or the contract active.",
       );
+    if (
+      record.kind === "invoices" &&
+      target === "approved" &&
+      parent?.kind === "orders"
+    ) {
+      const match = await invoiceMatch(record, k);
+      assert(
+        match.status === "matched",
+        422,
+        "Three-way matching has unresolved exceptions. Review the PO, buyer-accepted receipts and actual invoice lines before approval.",
+      );
+    }
     if (
       record.kind === "payments" &&
       ["pending", "processing", "completed"].includes(target)
