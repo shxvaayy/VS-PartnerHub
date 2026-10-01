@@ -62,6 +62,29 @@ try {
       name: "Requested report canvas is visible without visual-error panels",
       passed: true,
     });
+    const canvas = visible.find(
+      (control) =>
+        control.type === "ControlType.Group" &&
+        control.name === "Power BI Report",
+    );
+    assert(canvas, "The native report canvas bounds are unavailable.");
+    const overlaps = (a, b) =>
+      a.x < b.x + b.width &&
+      a.x + a.width > b.x &&
+      a.y < b.y + b.height &&
+      a.y + a.height > b.y;
+    assert(
+      !visible.some(
+        (control) =>
+          control.type === "ControlType.ToolTip" &&
+          overlaps(control.bounds, canvas.bounds),
+      ),
+      "A native tooltip overlaps the report canvas.",
+    );
+    report.checks.push({
+      name: "No native tooltip overlaps the report canvas",
+      passed: true,
+    });
     const images = visible.filter(
       (control) => control.type === "ControlType.Image",
     );

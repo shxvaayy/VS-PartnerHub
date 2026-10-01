@@ -38,6 +38,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class PartnerHubDesktop {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
@@ -45,8 +46,8 @@ public static class PartnerHubDesktop {
 '@
 function Capture-Screen([string]$Name) {
   $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
-  # Moving away from the selected page tab dismisses its hover tooltip, which
-  # otherwise covers measurement notes in an otherwise valid native capture.
+  # Page-tab keyboard focus is cleared separately before capturing a report.
+  # Keep the pointer outside the image content as well.
   [PartnerHubDesktop]::SetCursorPos($bounds.Left + 2, $bounds.Top + 2) | Out-Null
   Start-Sleep -Milliseconds 350
   $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
@@ -111,6 +112,42 @@ function Invoke-Control($Control) {
     return $true
   }
   return $false
+}
+function Clear-PageTabTooltip($Window, $Controls) {
+  # Desktop can keep a focused tab's tooltip open after the mouse has moved.
+  # Focus the report's empty outer margin, away from every visual/data point.
+  $canvas = $Controls | Where-Object {
+    $_.name -eq 'Power BI Report' -and $_.type -eq 'ControlType.Group' -and
+    -not $_.offscreen -and $_.bounds.width -gt 100 -and $_.bounds.height -gt 100
+  } | Select-Object -First 1
+  if (-not $canvas) { throw 'The report canvas is unavailable for a clean native capture.' }
+  $nativeHandle = [IntPtr]$Window.Current.NativeWindowHandle
+  [PartnerHubDesktop]::SetForegroundWindow($nativeHandle) | Out-Null
+  if ([PartnerHubDesktop]::GetForegroundWindow() -ne $nativeHandle) {
+    throw 'The isolated Power BI application must be foreground before report capture.'
+  }
+  if (-not [PartnerHubDesktop]::SetCursorPos([int]($canvas.bounds.x + 8), [int]($canvas.bounds.y + 8))) {
+    throw 'The native capture could not move to the empty report margin.'
+  }
+  [PartnerHubDesktop]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+  [PartnerHubDesktop]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+  [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Start-Sleep -Milliseconds 750
+  $condition = [System.Windows.Automation.PropertyCondition]::new(
+    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [System.Windows.Automation.ControlType]::ToolTip
+  )
+  $deadline = (Get-Date).AddSeconds(5)
+  do {
+    $tooltips = $Window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+    $visible = @($tooltips | Where-Object {
+      -not $_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 0
+    })
+    if ($visible.Count -eq 0) { return }
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  throw 'A native tooltip remained visible after leaving the dashboard tab.'
 }
 function Dismiss-Tips($Controls) {
   foreach ($label in @('Collaborate and share', 'Optimize your report for mobile')) {
@@ -266,6 +303,7 @@ try {
     $control = $controls | Where-Object { $_.name -eq $title -and $_.type -eq 'ControlType.TabItem' } | Select-Object -First 1
     if (-not (Invoke-Control $control)) { throw "Desktop tab selection is unavailable for $title." }
     Start-Sleep -Seconds 3
+    if ($Platform -eq 'power-bi') { Clear-PageTabTooltip (Get-AppWindow) $controls }
     Capture-Screen ($title -replace '[^a-zA-Z0-9]+', '-')
     $controls = @(Read-Controls (Get-AppWindow))
     Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
