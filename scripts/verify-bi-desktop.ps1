@@ -97,7 +97,9 @@ function Invoke-Control($Control) {
     $pattern.Select(); return $true
   }
   # Some Desktop ribbon controls provide a clickable point without Invoke.
-  $point = [System.Windows.Point]::new()
+  # Windows PowerShell 5.1 needs the explicit Point(double, double)
+  # constructor; its binder cannot invoke the value type's default constructor.
+  $point = [System.Windows.Point]::new(0.0, 0.0)
   if ($Control.element.TryGetClickablePoint([ref]$point)) {
     [PartnerHubDesktop]::SetCursorPos([int]$point.X, [int]$point.Y) | Out-Null
     [PartnerHubDesktop]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
