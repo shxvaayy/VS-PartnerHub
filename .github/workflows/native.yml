@@ -65,6 +65,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: npm ci
+      - name: Install the Android accessibility driver
+        run: npx playwright install android
       - run: npm run build
       - run: npx cap sync android
       - name: Build debug APK and unsigned release bundle; run Android lint
