@@ -44,6 +44,8 @@ export function analyticsFixture(): AnalyticsReport {
   const view = (id: (typeof reportViews)[number]): ReportView => ({
     id,
     ...reportLabels[id],
+    description:
+      "TEST DATA · Synthetic Desktop acceptance fixture; these are not company business results.",
     metrics: structuredClone(metrics),
     trendLabel: "Monthly activity",
     trend: [
@@ -56,7 +58,9 @@ export function analyticsFixture(): AnalyticsReport {
       { name: '=HYPERLINK("https://example.test")', value: 0 },
     ],
     dataset: { columns: [], rows: [] },
-    notes: ["Current authorized data only."],
+    notes: [
+      "TEST DATA · Power BI Desktop acceptance fixture. These values are synthetic and are not VS PartnerHub business results.",
+    ],
     tables: [
       {
         id: "metrics",

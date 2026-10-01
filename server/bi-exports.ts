@@ -7,7 +7,7 @@ import type {
   ReportTable,
   ReportView,
 } from "../shared/analytics.js";
-import { biColors, biHighlights } from "../shared/bi.js";
+import { biAccent, biColors, biHighlights } from "../shared/bi.js";
 
 const schemas = {
   project:
@@ -218,6 +218,7 @@ function visual(
   position: Position,
   queryState?: Record<string, unknown>,
   objects?: Record<string, unknown>,
+  sort?: { field: object; direction: "Ascending" | "Descending" },
 ) {
   return {
     $schema: schemas.visual,
@@ -229,7 +230,16 @@ function visual(
     },
     visual: {
       visualType: type,
-      ...(queryState ? { query: { queryState } } : {}),
+      ...(queryState
+        ? {
+            query: {
+              queryState,
+              ...(sort
+                ? { sortDefinition: { sort: [sort], isDefaultSort: false } }
+                : {}),
+            },
+          }
+        : {}),
       ...(objects ? { objects } : {}),
       visualContainerObjects: {
         title: [
@@ -258,7 +268,7 @@ function visual(
             properties: {
               show: literal(type !== "textbox"),
               color: fill("#e0e6e1"),
-              radius: literal(8),
+              radius: literal(4),
             },
           },
         ],
@@ -269,11 +279,12 @@ function visual(
 
 function pageVisuals(view: ReportView, report: AnalyticsReport) {
   const metricTable = `${view.id}_metrics`;
+  const accent = biAccent[view.id];
   const title = visual(
     `${view.id}-title`,
     "textbox",
     view.title,
-    { x: 28, y: 16, width: 1224, height: 68 },
+    { x: 24, y: 16, width: 900, height: 72 },
     undefined,
     {
       general: [
@@ -286,9 +297,9 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
                     value: `VS PARTNERHUB  /  ${view.title}`,
                     textStyle: {
                       fontFamily: "Segoe UI",
-                      fontSize: "22pt",
+                      fontSize: "20pt",
                       fontWeight: "bold",
-                      color: "#243a30",
+                      color: "#ffffff",
                     },
                   },
                 ],
@@ -296,11 +307,11 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
               {
                 textRuns: [
                   {
-                    value: `${report.from} – ${report.to} · ${report.currency} · Snapshot ${report.generatedAt}`,
+                    value: view.description,
                     textStyle: {
                       fontFamily: "Segoe UI",
                       fontSize: "10pt",
-                      color: "#56665e",
+                      color: "#d7e5de",
                     },
                   },
                 ],
@@ -311,16 +322,63 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       ],
     },
   );
+  const period = visual(
+    `${view.id}-period`,
+    "textbox",
+    "Reporting period and snapshot",
+    { x: 924, y: 16, width: 332, height: 72 },
+    undefined,
+    {
+      general: [
+        {
+          properties: {
+            paragraphs: [
+              {
+                textRuns: [
+                  {
+                    value: `REPORTING PERIOD · ${report.currency}`,
+                    textStyle: { fontSize: "9pt", color: "#d7e5de" },
+                  },
+                ],
+              },
+              {
+                textRuns: [
+                  {
+                    value: `${report.from} – ${report.to}`,
+                    textStyle: { fontSize: "12pt", color: "#ffffff" },
+                  },
+                ],
+              },
+              {
+                textRuns: [
+                  {
+                    value: `Snapshot ${report.generatedAt.slice(0, 16).replace("T", " ")} UTC`,
+                    textStyle: { fontSize: "9pt", color: "#d7e5de" },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    },
+  );
+  for (const header of [title, period])
+    header.visual.visualContainerObjects.background[0].properties = {
+      show: literal(true),
+      color: fill("#173f35"),
+      transparency: literal(0),
+    };
   const cards = view.metrics.slice(0, biHighlights).map((metric, index) =>
     visual(
       `${view.id}-metric-${metric.key}`,
       "card",
       metric.label,
       {
-        x: 28 + (index % 4) * 310,
-        y: 100 + Math.floor(index / 4) * 116,
-        width: 294,
-        height: 100,
+        x: 24 + (index % 4) * 311,
+        y: 100 + Math.floor(index / 4) * 90,
+        width: 299,
+        height: 78,
       },
       {
         Values: {
@@ -336,20 +394,24 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       },
       {
         labels: [
-          { properties: { fontSize: literal(26), color: fill("#243a30") } },
+          { properties: { fontSize: literal(26), color: fill(accent) } },
         ],
         categoryLabels: [{ properties: { show: literal(false) } }],
       },
     ),
   );
-  const chartY =
-    116 + Math.ceil(Math.min(view.metrics.length, biHighlights) / 4) * 116;
+  const chartY = 102 + Math.max(1, Math.ceil(cards.length / 4)) * 90;
+  const chartObjects = {
+    dataPoint: [{ properties: { defaultColor: fill(accent) } }],
+    categoryAxis: [{ properties: { showAxisTitle: literal(false) } }],
+    valueAxis: [{ properties: { showAxisTitle: literal(false) } }],
+  };
   const charts = [
     visual(
       `${view.id}-trend`,
       "lineChart",
       view.trendLabel,
-      { x: 28, y: chartY, width: 760, height: 250 },
+      { x: 24, y: chartY, width: 760, height: 498 - chartY },
       {
         Category: {
           projections: [
@@ -358,12 +420,17 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         },
         Y: { projections: [countProjection(`${view.id}_trend`)] },
       },
+      chartObjects,
+      {
+        field: projection(`${view.id}_trend`, "month").field,
+        direction: "Ascending",
+      },
     ),
     visual(
       `${view.id}-distribution`,
       "barChart",
       view.distributionLabel,
-      { x: 804, y: chartY, width: 448, height: 250 },
+      { x: 796, y: chartY, width: 460, height: 498 - chartY },
       {
         Category: {
           projections: [
@@ -377,6 +444,11 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         },
         Y: { projections: [countProjection(`${view.id}_distribution`)] },
       },
+      chartObjects,
+      {
+        field: countProjection(`${view.id}_distribution`).field,
+        direction: "Descending",
+      },
     ),
   ];
   const metricsTable = view.tables.find((table) => table.id === "metrics")!;
@@ -387,7 +459,7 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
     view.tables.find(
       (table) => table.id === "summary" && table.columns.length,
     ) ||
-    metricsTable;
+    view.tables.find((table) => table.id === "distribution")!;
   const datasetVisual = (
     table: ReportTable,
     name: string,
@@ -395,29 +467,50 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
     position: Position,
     columns: ReportColumn[],
   ) =>
-    visual(name, "tableEx", title, position, {
-      Values: {
-        projections: columns.map((column) =>
-          projection(
-            tableName(view, table),
-            column.key,
-            "Column",
-            column.label,
+    visual(
+      name,
+      "tableEx",
+      title,
+      position,
+      {
+        Values: {
+          projections: columns.map((column) =>
+            projection(
+              tableName(view, table),
+              column.key,
+              "Column",
+              column.label,
+            ),
           ),
-        ),
+        },
       },
-    });
+      {
+        grid: [{ properties: { rowPadding: literal(4) } }],
+        columnHeaders: [
+          {
+            properties: {
+              fontSize: literal(10),
+              backColor: fill("#edf3ef"),
+              fontColor: fill("#243a30"),
+            },
+          },
+        ],
+        values: [{ properties: { fontSize: literal(10) } }],
+        total: [{ properties: { show: literal(false) } }],
+      },
+    );
   return {
-    height: chartY + 600,
+    height: 720,
     visuals: [
       title,
+      period,
       ...cards,
       ...charts,
       datasetVisual(
         metricsTable,
         `${view.id}-all-metrics`,
         "All KPIs & measurement scope",
-        { x: 28, y: chartY + 266, width: 604, height: 260 },
+        { x: 24, y: 510, width: 610, height: 180 },
         [
           metricsTable.columns.find((column) => column.key === "label")!,
           { key: "display_value", label: "Value", format: "text" },
@@ -429,14 +522,14 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         details,
         `${view.id}-details`,
         details.title,
-        { x: 648, y: chartY + 266, width: 604, height: 260 },
+        { x: 646, y: 510, width: 610, height: 180 },
         details.columns,
       ),
       visual(
         `${view.id}-scope`,
         "textbox",
         "Measurement notes",
-        { x: 28, y: chartY + 542, width: 1224, height: 46 },
+        { x: 24, y: 700, width: 1232, height: 18 },
         undefined,
         {
           general: [
@@ -447,8 +540,8 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
                     textRuns: [
                       {
                         value:
-                          "Monetary KPIs use major currency units. Detail datasets retain source units. Missing evidence remains blank. Period metrics use creation dates; current snapshots are labelled separately.",
-                        textStyle: { fontSize: "9pt", color: "#56665e" },
+                          "KPI money is in major currency units; detail tables retain source units. Missing evidence stays blank. Period metrics use creation dates; current snapshots are labelled.",
+                        textStyle: { fontSize: "8pt", color: "#56665e" },
                       },
                     ],
                   },
@@ -558,7 +651,7 @@ This file is a Power BI Desktop project. Publishing into the Power BI service is
       $schema: schemas.page,
       name: view.id,
       displayName: view.title,
-      displayOption: "FitToWidth",
+      displayOption: "FitToPage",
       width: 1280,
       height: page.height,
       objects: {
