@@ -422,7 +422,7 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       `${view.id}-trend`,
       "lineChart",
       view.trendLabel,
-      { x: 24, y: chartY, width: 760, height: 498 - chartY },
+      { x: 24, y: chartY, width: 760, height: 486 - chartY },
       {
         Category: {
           projections: [
@@ -441,7 +441,7 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       `${view.id}-distribution`,
       "barChart",
       view.distributionLabel,
-      { x: 796, y: chartY, width: 460, height: 498 - chartY },
+      { x: 796, y: chartY, width: 460, height: 486 - chartY },
       {
         Category: {
           projections: [
@@ -521,7 +521,7 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         metricsTable,
         `${view.id}-all-metrics`,
         "All KPIs & measurement scope",
-        { x: 24, y: 510, width: 610, height: 180 },
+        { x: 24, y: 498, width: 610, height: 180 },
         [
           metricsTable.columns.find((column) => column.key === "label")!,
           { key: "display_value", label: "Value", format: "text" },
@@ -533,14 +533,14 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         details,
         `${view.id}-details`,
         details.title,
-        { x: 646, y: 510, width: 610, height: 180 },
+        { x: 646, y: 498, width: 610, height: 180 },
         details.columns,
       ),
       visual(
         `${view.id}-scope`,
         "textbox",
         "Measurement notes",
-        { x: 24, y: 700, width: 1232, height: 18 },
+        { x: 24, y: 684, width: 1232, height: 34 },
         undefined,
         {
           general: [

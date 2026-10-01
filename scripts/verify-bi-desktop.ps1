@@ -45,6 +45,10 @@ public static class PartnerHubDesktop {
 '@
 function Capture-Screen([string]$Name) {
   $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+  # Moving away from the selected page tab dismisses its hover tooltip, which
+  # otherwise covers measurement notes in an otherwise valid native capture.
+  [PartnerHubDesktop]::SetCursorPos($bounds.Left + 2, $bounds.Top + 2) | Out-Null
+  Start-Sleep -Milliseconds 350
   $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   try {
