@@ -70,6 +70,8 @@ function Read-Controls($Window) {
       $current = $element.Current
       if ($current.Name) {
         $rectangle = $current.BoundingRectangle
+        $finiteBounds = @($rectangle.X, $rectangle.Y, $rectangle.Width, $rectangle.Height).Where({ [double]::IsNaN($_) -or [double]::IsInfinity($_) }).Count -eq 0
+        $bounds = if ($finiteBounds) { @{ x = $rectangle.X; y = $rectangle.Y; width = $rectangle.Width; height = $rectangle.Height } } else { @{ x = 0; y = 0; width = 0; height = 0 } }
         $ancestors = @()
         $parent = $element
         for ($depth = 0; $depth -lt 5; $depth++) {
@@ -77,7 +79,7 @@ function Read-Controls($Window) {
           if ($null -eq $parent) { break }
           if ($parent.Current.Name) { $ancestors += $parent.Current.Name }
         }
-        $result += [pscustomobject]@{ name = $current.Name; type = $current.ControlType.ProgrammaticName; enabled = $current.IsEnabled; offscreen = $current.IsOffscreen; bounds = @{ x = $rectangle.X; y = $rectangle.Y; width = $rectangle.Width; height = $rectangle.Height }; ancestors = $ancestors; element = $element }
+        $result += [pscustomobject]@{ name = $current.Name; type = $current.ControlType.ProgrammaticName; enabled = $current.IsEnabled; offscreen = $current.IsOffscreen -or -not $finiteBounds; bounds = $bounds; ancestors = $ancestors; element = $element }
       }
     } catch {}
   }
@@ -181,6 +183,7 @@ try {
     $workbook = (Resolve-Path (Join-Path $inputDirectory 'VS-PartnerHub-Tableau.twbx')).Path
   }
   if (-not (Test-Path $application)) { throw 'Installed desktop executable was not found.' }
+  if ($env:GITHUB_OUTPUT) { Add-Content $env:GITHUB_OUTPUT 'desktop_installed=true' }
   $checks.Add(@{ name = 'Desktop application installed'; passed = $true })
   Start-Process $application -ArgumentList ('"' + $workbook + '"') | Out-Null
   $deadline = (Get-Date).AddSeconds(180)
@@ -197,7 +200,7 @@ try {
     Capture-Screen 'latest-screen'
     if ($controls.name -contains 'Issues were found') { throw 'Power BI Desktop rejected the report project. Inspect the retained error dialog.' }
     Dismiss-Tips $controls
-    foreach ($label in @('Not now', 'Continue without signing in', 'Apply changes')) {
+    foreach ($label in @('Not now', 'Continue without signing in')) {
       $action = $controls | Where-Object { $_.name -eq $label -and $_.enabled -and -not $_.offscreen } | Select-Object -First 1
       if ($action) { Invoke-Control $action | Out-Null }
     }
@@ -220,15 +223,24 @@ try {
   if ($Platform -eq 'power-bi') {
     # Refresh runs asynchronously. Model validation must inspect its loaded data,
     # including all rows, numeric units and preserved blanks, before UI acceptance.
-    $modelDeadline = (Get-Date).AddSeconds(90)
+    $modelDeadline = (Get-Date).AddSeconds(180)
     $modelReady = $false
+    $appliedQueries = $false
     do {
       try {
+        if ((Get-Date) -ge $modelDeadline) { throw 'Desktop did not finish loading its snapshot before the acceptance deadline.' }
         $controls = @(Read-Controls (Get-AppWindow))
         Dismiss-Tips $controls
+        $loading = $controls | Where-Object { $_.name -eq 'Load' -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Select-Object -First 1
+        if ($loading) {
+          Start-Sleep -Seconds 3
+          continue
+        }
         $apply = $controls | Where-Object { $_.name -eq 'Apply changes' -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Select-Object -First 1
-        if ($apply -and (Invoke-Control $apply)) {
-          if ((Get-Date) -ge $modelDeadline) { throw 'Desktop did not finish applying its pending query changes.' }
+        # Invoke once, then wait for the modal load to finish. UIAutomation still
+        # exposes the banner behind the dialog; invoking it again restarts load.
+        if ($apply -and -not $appliedQueries -and (Invoke-Control $apply)) {
+          $appliedQueries = $true
           $report.queryChangesApplied = $true
           Start-Sleep -Seconds 3
           continue

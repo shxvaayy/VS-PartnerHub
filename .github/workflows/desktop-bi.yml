@@ -61,7 +61,7 @@ jobs:
         shell: powershell
         run: ./scripts/verify-bi-desktop.ps1 -Platform '${{ matrix.platform }}'
       - name: Capture the actual business dashboards with labelled illustrative data
-        if: matrix.platform == 'power-bi'
+        if: always() && matrix.platform == 'power-bi' && steps.desktop.outputs.desktop_installed == 'true'
         shell: powershell
         run: ./scripts/verify-bi-desktop.ps1 -Platform power-bi -Snapshot presentation
       - uses: actions/cache/save@v4
