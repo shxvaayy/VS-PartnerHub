@@ -248,8 +248,18 @@ try {
       if ($action) { Invoke-Control $action | Out-Null }
     }
     if ($Platform -eq 'power-bi' -and -not $refreshed) {
-      $refresh = $controls | Where-Object { $_.name -in @('Refresh now', 'Refresh') -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Sort-Object @{ Expression = { $_.name -eq 'Refresh now' }; Descending = $true } | Select-Object -First 1
-      if ($refresh -and (Invoke-Control $refresh)) { $refreshed = $true; Write-Host 'Requested snapshot refresh in Power BI Desktop.' }
+      # The ribbon's Refresh split button can open a menu without loading data.
+      # Only the banner action or the explicit schema/data command counts as
+      # requesting refresh; wait for the menu's accessibility tree if needed.
+      $refresh = $controls | Where-Object { $_.name -in @('Schema and data', 'Refresh now') -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Sort-Object @{ Expression = { $_.name -eq 'Schema and data' }; Descending = $true } | Select-Object -First 1
+      if ($refresh -and (Invoke-Control $refresh)) {
+        $refreshed = $true
+        $report.refreshAction = $refresh.name
+        Write-Host "Requested snapshot refresh using '$($refresh.name)' in Power BI Desktop."
+      } else {
+        $menu = $controls | Where-Object { $_.name -eq 'Refresh' -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Select-Object -First 1
+        if ($menu) { Invoke-Control $menu | Out-Null }
+      }
     }
     $titles = @($expected.pages.title)
     $found = @($titles | Where-Object { $controls.name -contains $_ })
