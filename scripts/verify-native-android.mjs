@@ -13,14 +13,94 @@ const out = path.resolve("artifacts/native-verification/android-acceptance");
 await fs.mkdir(out, { recursive: true });
 const checks = [],
   errors = [],
-  fileIntegrity = [];
+  fileIntegrity = [],
+  nativeWindows = [],
+  hostAlerts = [];
 let fixture, device, page;
 const adb = (args) =>
-  execFileSync("adb", args, { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+  execFileSync("adb", args, {
+    encoding: "utf8",
+    timeout: 30000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
 async function check(name, action) {
   await action();
   checks.push({ name, passed: true });
   console.log("PASS " + name);
+}
+async function focusedWindow() {
+  const dump = adb(["shell", "dumpsys", "window"]);
+  const focus = dump.match(/^\s*mCurrentFocus=(.*)$/m)?.[1]?.trim() || "";
+  // A cold emulator can raise an unrelated launcher ANR. Recover only that
+  // named host component; an application ANR must still fail acceptance.
+  if (/Application (?:Error|Not Responding)/.test(focus)) {
+    adb([
+      "shell",
+      "uiautomator",
+      "dump",
+      "/sdcard/partnerhub-acceptance-window.xml",
+    ]);
+    const xml = adb([
+      "shell",
+      "cat",
+      "/sdcard/partnerhub-acceptance-window.xml",
+    ]);
+    assert(
+      /Pixel Launcher[^"<]*responding/.test(xml),
+      "An application stopped responding; inspect the native failure evidence.",
+    );
+    assert(hostAlerts.length < 2, "The emulator launcher is not stable.");
+    const close = [...xml.matchAll(/<node\b[^>]*>/g)].find(
+      ([node]) =>
+        node.includes('package="android"') &&
+        node.includes('resource-id="android:id/aerr_close"'),
+    )?.[0];
+    const bounds = close?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    assert(bounds, "The named launcher alert has no Close app control.");
+    const filename = `launcher-alert-${hostAlerts.length + 1}`;
+    await fs.writeFile(path.join(out, filename + ".xml"), xml);
+    await device.screenshot({ path: path.join(out, filename + ".png") });
+    adb([
+      "shell",
+      "input",
+      "tap",
+      String(Math.round((Number(bounds[1]) + Number(bounds[3])) / 2)),
+      String(Math.round((Number(bounds[2]) + Number(bounds[4])) / 2)),
+    ]);
+    hostAlerts.push({ application: "Pixel Launcher", action: "Close app" });
+    return "";
+  }
+  return focus;
+}
+async function waitForNativeWindow(pattern, stage) {
+  let focus;
+  await expect
+    .poll(
+      async () => {
+        focus = await focusedWindow();
+        return focus;
+      },
+      { timeout: 45000, intervals: [300, 500, 1000] },
+    )
+    .toMatch(pattern);
+  nativeWindows.push({ stage, focus, checkedAt: new Date().toISOString() });
+}
+async function waitForShareSheet(filename, stage) {
+  // Activity history includes old and not-yet-visible choosers. Before sending
+  // Back, require the current input window and the actual native file label.
+  await waitForNativeWindow(/ChooserActivity/, stage + " focused");
+  await device.wait({ text: filename });
+  await waitForNativeWindow(/ChooserActivity/, stage + " visible");
+}
+async function dismissShareSheet(stage) {
+  const location = page.url();
+  await waitForNativeWindow(/ChooserActivity/, stage + " before Back");
+  await device.shell("input keyevent KEYCODE_BACK");
+  await waitForNativeWindow(
+    /com\.vijaysoftwaresolutions\.partnerhub\/[^\s}]*MainActivity/,
+    stage + " dismissed",
+  );
+  await expect(page).toHaveURL(location);
 }
 async function readPrivateFile(file, source) {
   assert(
@@ -153,20 +233,13 @@ try {
       await page
         .getByRole("button", { name: "Download Power BI project", exact: true })
         .click();
-      await expect
-        .poll(() => adb(["shell", "dumpsys", "activity", "activities"]), {
-          timeout: 30000,
-        })
-        .toMatch(/ChooserActivity/);
+      await waitForNativeWindow(/ChooserActivity/, "report share requested");
       const original = fixture.downloadedReport();
       assert(
         original?.length > 0,
         "The actual report bytes sent by the fixture must be captured.",
       );
       await fs.writeFile(path.join(out, "http-report.zip"), original);
-      await device.screenshot({
-        path: path.join(out, "native-file-sharing.png"),
-      });
       const names = adb([
         "shell",
         "run-as",
@@ -187,12 +260,16 @@ try {
         file,
         "The archive must be held in the application's private cache.",
       );
+      await waitForShareSheet(path.basename(file), "report share");
+      await device.screenshot({
+        path: path.join(out, "native-file-sharing.png"),
+      });
       const bytes = await readPrivateFile(file, original);
       const source = JSON.parse(
         strFromU8(unzipSync(bytes)["data/analytics.json"]),
       );
       assert.deepEqual(source.views, report.views);
-      await device.shell("input keyevent KEYCODE_BACK");
+      await dismissShareSheet("report share");
       await expect(
         page.getByRole("button", {
           name: "Download Power BI project",
@@ -217,9 +294,7 @@ try {
         }, address),
       );
       await link.click();
-      await expect
-        .poll(() => adb(["shell", "dumpsys", "activity", "activities"]))
-        .toMatch(/ChooserActivity/);
+      await waitForNativeWindow(/ChooserActivity/, "document share requested");
       const files = adb([
         "shell",
         "run-as",
@@ -233,12 +308,16 @@ try {
         .split(/\r?\n/);
       const file = files.find((name) => name.endsWith(".pdf"));
       assert(file, "The private PDF must be prepared in the app cache.");
+      await waitForShareSheet(path.basename(file), "document share");
+      await device.screenshot({
+        path: path.join(out, "native-document-sharing.png"),
+      });
       const cached = await readPrivateFile(file, original);
       assert.equal(
         createHash("sha256").update(cached).digest("hex"),
         createHash("sha256").update(original).digest("hex"),
       );
-      await device.shell("input keyevent KEYCODE_BACK");
+      await dismissShareSheet("document share");
       await expect(page).toHaveURL(/\/app\/documents(?:\?.*)?$/);
       await expect(link).not.toHaveAttribute("aria-busy", "true");
     },
@@ -342,10 +421,22 @@ try {
       await page
         .getByRole("button", { name: "Download Power BI project", exact: true })
         .click();
-      await expect
-        .poll(() => adb(["shell", "dumpsys", "activity", "activities"]))
-        .toMatch(/ChooserActivity/);
-      await device.shell("input keyevent KEYCODE_BACK");
+      await waitForNativeWindow(/ChooserActivity/, "logout share requested");
+      const files = adb([
+        "shell",
+        "run-as",
+        pkg,
+        "find",
+        "cache/partnerhub-exports",
+        "-type",
+        "f",
+      ])
+        .trim()
+        .split(/\r?\n/);
+      const file = files.find((name) => name.endsWith(".zip"));
+      assert(file, "A fresh private archive must exist before logout.");
+      await waitForShareSheet(path.basename(file), "logout share");
+      await dismissShareSheet("logout share");
       await expect(
         page.getByRole("button", {
           name: "Download Power BI project",
@@ -385,6 +476,12 @@ try {
   await device
     ?.screenshot({ path: path.join(out, "failure.png") })
     .catch(() => {});
+  try {
+    await fs.writeFile(
+      path.join(out, "failure-window.txt"),
+      adb(["shell", "dumpsys", "window"]),
+    );
+  } catch {}
 } finally {
   await device?.close().catch(() => {});
   await fixture?.close();
@@ -399,6 +496,8 @@ try {
         checks,
         errors,
         fileIntegrity,
+        nativeWindows,
+        hostAlerts,
         fixtureRequests: fixture?.diagnostics().requests || [],
         isolatedFixtures: true,
         realNativeWebView: true,
