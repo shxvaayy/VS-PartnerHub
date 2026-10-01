@@ -25,9 +25,9 @@ try
 {
     using var discovery = new AdomdConnection($"Data Source=localhost:{port};Connect Timeout=15;");
     discovery.Open();
-    var catalogs = ReadRows(discovery, "SELECT CATALOG_NAME FROM $SYSTEM.DBSCHEMA_CATALOGS");
-    if (catalogs.Count != 1) throw new InvalidOperationException("Expected one report in the isolated Desktop instance.");
-    var catalog = Convert.ToString(catalogs[0]["CATALOG_NAME"], CultureInfo.InvariantCulture);
+    var catalogs = discovery.GetSchemaDataSet(AdomdSchemaGuid.Catalogs, null).Tables[0];
+    if (catalogs.Rows.Count != 1) throw new InvalidOperationException("Expected one report in the isolated Desktop instance.");
+    var catalog = Convert.ToString(catalogs.Rows[0]["CATALOG_NAME"], CultureInfo.InvariantCulture);
     using var connection = new AdomdConnection($"Data Source=localhost:{port};Initial Catalog={catalog};Connect Timeout=15;");
     connection.Open();
     checks.Add(new { name = "Connected to the report loaded by Power BI Desktop", passed = true });

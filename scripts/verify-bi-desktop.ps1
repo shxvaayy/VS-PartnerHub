@@ -1,10 +1,20 @@
-param([ValidateSet('power-bi', 'tableau')][string]$Platform)
+param(
+  [ValidateSet('power-bi', 'tableau')][string]$Platform,
+  [ValidateSet('regression', 'presentation')][string]$Snapshot = 'regression'
+)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 if ($env:GITHUB_ACTIONS -ne 'true' -or -not $env:RUNNER_TEMP) {
   throw 'Run desktop acceptance in an isolated Windows Actions runner.'
 }
-$out = Join-Path (Get-Location) "artifacts/desktop-bi/$Platform"
+$suffix = if ($Snapshot -eq 'presentation') { '-preview' } else { '' }
+$out = Join-Path (Get-Location) "artifacts/desktop-bi/$Platform$suffix"
+$inputDirectory = if ($Snapshot -eq 'presentation') { 'artifacts/desktop-bi/input/presentation' } else { 'artifacts/desktop-bi/input' }
+$expectedPath = Join-Path $inputDirectory 'expected.json'
+$expected = Get-Content $expectedPath -Raw | ConvertFrom-Json
+if (-not $expected.syntheticData -or $expected.productionDataRead -or $expected.externalPublication) {
+  throw 'Desktop capture only accepts the isolated synthetic projects.'
+}
 New-Item -ItemType Directory -Force $out | Out-Null
 $tools = Get-Content scripts/desktop-bi-tools.json -Raw | ConvertFrom-Json
 $tool = $tools.$Platform
@@ -18,6 +28,7 @@ $report = [ordered]@{
   syntheticData = $true
   productionDataRead = $false
   externalPublication = $false
+  visualizationPreview = $Snapshot -eq 'presentation'
   checks = $checks
   desktopAcceptanceCompleted = $false
 }
@@ -97,6 +108,17 @@ function Dismiss-Tips($Controls) {
   foreach ($label in @('Collaborate and share', 'Optimize your report for mobile')) {
     $tip = $Controls | Where-Object { $_.name -eq $label -and -not $_.offscreen } | Select-Object -First 1
     if (-not $tip) { continue }
+    # Desktop's coachmarks expose unnamed parents, sometimes covering the full
+    # WebView. Match their close button on the same title row, never the app's
+    # title-bar Close button above the coachmark.
+    $close = $Controls | Where-Object {
+      $_.name -eq 'Close' -and $_.type -eq 'ControlType.Button' -and -not $_.offscreen -and
+      $_.bounds.width -gt 0 -and $_.bounds.width -le 32 -and
+      $_.bounds.x -ge ($tip.bounds.x + $tip.bounds.width) -and
+      $_.bounds.x -le ($tip.bounds.x + $tip.bounds.width + 400) -and
+      [Math]::Abs($_.bounds.y - $tip.bounds.y) -le 8
+    } | Select-Object -First 1
+    if ($close) { Invoke-Control $close | Out-Null; continue }
     $parent = $tip.element
     for ($depth = 0; $depth -lt 5; $depth++) {
       $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($parent)
@@ -123,27 +145,40 @@ try {
   if ($signature.Status -ne 'Valid') { throw 'The official installer signature is not valid.' }
   if ($env:GITHUB_OUTPUT) { Add-Content $env:GITHUB_OUTPUT 'installer_verified=true' }
   $checks.Add(@{ name = 'Official installer hash and Authenticode signature'; passed = $true })
-  $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_NOTIFICATION=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
-  $arguments += @('-log', ('"' + (Join-Path $out 'installer.log') + '"'))
-  Write-Host 'Installer verified; starting the desktop installation.'
-  $installed = Start-Process $installer -ArgumentList $arguments -PassThru
-  # Start-Process -Wait also waits for updater/application descendants. Wait for
-  # the actual installer process, whose exit code is the installation result.
-  if (-not $installed.WaitForExit(480000)) {
-    Capture-Screen 'installer-timeout'
-    $installed.Kill()
-    throw 'The official desktop installer exceeded eight minutes; inspect installer.log.'
+  $existingApplication = Join-Path $env:ProgramFiles 'Microsoft Power BI Desktop/bin/PBIDesktop.exe'
+  $reuse = $Platform -eq 'power-bi' -and $Snapshot -eq 'presentation' -and (Test-Path $existingApplication)
+  if ($reuse) {
+    if ((Get-AuthenticodeSignature $existingApplication).Status -ne 'Valid') { throw 'The installed Power BI executable signature is invalid.' }
+    $installedVersion = (Get-Item $existingApplication).VersionInfo.FileVersion.Split(' ')[0]
+    if ($installedVersion -ne $tool.version) { throw 'The installed Power BI version differs from the pinned tool.' }
+    foreach ($applicationProcess in @(Get-Process -Name PBIDesktop -ErrorAction SilentlyContinue)) {
+      & taskkill.exe /PID $applicationProcess.Id /T /F | Out-Null
+    }
+    Start-Sleep -Seconds 2
+    $report.reusedVerifiedInstallation = $true
+  } else {
+    $arguments = if ($Platform -eq 'power-bi') { @('-quiet', '-norestart', 'ACCEPT_EULA=1', 'DISABLE_UPDATE_NOTIFICATION=1') } else { @('-quiet', '-norestart', 'ACCEPTEULA=1', 'SKIPAPPLICATIONLAUNCH=1') }
+    $arguments += @('-log', ('"' + (Join-Path $out 'installer.log') + '"'))
+    Write-Host 'Installer verified; starting the desktop installation.'
+    $installed = Start-Process $installer -ArgumentList $arguments -PassThru
+    # Start-Process -Wait also waits for updater/application descendants. Wait for
+    # the actual installer process, whose exit code is the installation result.
+    if (-not $installed.WaitForExit(480000)) {
+      Capture-Screen 'installer-timeout'
+      $installed.Kill()
+      throw 'The official desktop installer exceeded eight minutes; inspect installer.log.'
+    }
+    if ($installed.ExitCode -notin @(0, 3010)) { throw "Desktop installation failed with code $($installed.ExitCode)." }
+    Write-Host "Desktop installation completed with code $($installed.ExitCode)."
   }
-  if ($installed.ExitCode -notin @(0, 3010)) { throw "Desktop installation failed with code $($installed.ExitCode)." }
-  Write-Host "Desktop installation completed with code $($installed.ExitCode)."
   if ($Platform -eq 'power-bi') {
     $application = Join-Path $env:ProgramFiles 'Microsoft Power BI Desktop/bin/PBIDesktop.exe'
     $script:processName = 'PBIDesktop'
-    $workbook = (Resolve-Path 'artifacts/desktop-bi/input/power-bi/VS PartnerHub.pbip').Path
+    $workbook = (Resolve-Path (Join-Path $inputDirectory 'power-bi/VS PartnerHub.pbip')).Path
   } else {
     $application = (Get-ChildItem (Join-Path $env:ProgramFiles 'Tableau') -Filter tabreader.exe -Recurse | Select-Object -First 1).FullName
     $script:processName = 'tabreader'
-    $workbook = (Resolve-Path 'artifacts/desktop-bi/input/VS-PartnerHub-Tableau.twbx').Path
+    $workbook = (Resolve-Path (Join-Path $inputDirectory 'VS-PartnerHub-Tableau.twbx')).Path
   }
   if (-not (Test-Path $application)) { throw 'Installed desktop executable was not found.' }
   $checks.Add(@{ name = 'Desktop application installed'; passed = $true })
@@ -170,7 +205,7 @@ try {
       $refresh = $controls | Where-Object { $_.name -in @('Refresh now', 'Refresh') -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Sort-Object @{ Expression = { $_.name -eq 'Refresh now' }; Descending = $true } | Select-Object -First 1
       if ($refresh -and (Invoke-Control $refresh)) { $refreshed = $true; Write-Host 'Requested snapshot refresh in Power BI Desktop.' }
     }
-    $titles = @((Get-Content artifacts/desktop-bi/input/expected.json -Raw | ConvertFrom-Json).pages.title)
+    $titles = @($expected.pages.title)
     $found = @($titles | Where-Object { $controls.name -contains $_ })
     if ($found.Count -eq 8 -and ($Platform -ne 'power-bi' -or $refreshed)) { break }
   } while ((Get-Date) -lt $deadline)
@@ -189,7 +224,16 @@ try {
     $modelReady = $false
     do {
       try {
-        & ./scripts/verify-bi-desktop-model.ps1 -OutputDirectory $out
+        $controls = @(Read-Controls (Get-AppWindow))
+        Dismiss-Tips $controls
+        $apply = $controls | Where-Object { $_.name -eq 'Apply changes' -and $_.type -eq 'ControlType.Button' -and $_.enabled -and -not $_.offscreen -and $_.bounds.width -gt 0 } | Select-Object -First 1
+        if ($apply -and (Invoke-Control $apply)) {
+          if ((Get-Date) -ge $modelDeadline) { throw 'Desktop did not finish applying its pending query changes.' }
+          $report.queryChangesApplied = $true
+          Start-Sleep -Seconds 3
+          continue
+        }
+        & ./scripts/verify-bi-desktop-model.ps1 -OutputDirectory $out -ExpectedPath $expectedPath
         $modelReady = $true
       } catch {
         if ((Get-Date) -ge $modelDeadline) { throw }
@@ -208,12 +252,12 @@ try {
     $controls = @(Read-Controls (Get-AppWindow))
     Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
     if ($Platform -eq 'power-bi') {
-      $page = (Get-Content artifacts/desktop-bi/input/expected.json -Raw | ConvertFrom-Json).pages | Where-Object { $_.title -eq $title }
+      $page = $expected.pages | Where-Object { $_.title -eq $title }
       $renderDeadline = (Get-Date).AddSeconds(30)
       do {
         $controls = @(Read-Controls (Get-AppWindow))
         Save-Controls ($title -replace '[^a-zA-Z0-9]+', '-') $controls
-        & node scripts/verify-bi-desktop-render.mjs $page.id
+        & node scripts/verify-bi-desktop-render.mjs $page.id $expectedPath $out
         if ($LASTEXITCODE -eq 0) { break }
         Start-Sleep -Seconds 2
       } while ((Get-Date) -lt $renderDeadline)
@@ -234,7 +278,8 @@ try {
   $report.completedAt = (Get-Date).ToUniversalTime().ToString('o')
   $report | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $out 'report.json') -Encoding UTF8
   if ($Platform -eq 'power-bi') {
-    & node scripts/verify-bi-desktop-render.mjs diagnostics
+    try { Save-Controls 'latest-controls' @(Read-Controls (Get-AppWindow)) } catch {}
+    & node scripts/verify-bi-desktop-render.mjs diagnostics $expectedPath $out
     $workspace = Join-Path $env:LOCALAPPDATA 'Microsoft/Power BI Desktop/AnalysisServicesWorkspaces'
     if (Test-Path $workspace) {
       Get-ChildItem $workspace -Filter '*.port.txt' -Recurse | ForEach-Object { @{ file = $_.Name; port = (Get-Content $_.FullName -Raw).Trim() } } | ConvertTo-Json | Set-Content (Join-Path $out 'analysis-services.json') -Encoding UTF8

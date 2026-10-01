@@ -140,7 +140,7 @@ function model(report: AnalyticsReport, appUrl: string) {
                       description:
                         "KPI value with its currency or percentage unit. Absent evidence stays blank.",
                       expression:
-                        'IF(ISBLANK([value]), BLANK(), SWITCH([format], "money", FORMAT([value] / 100, "#,0.00") & " " & [currency], "percent", FORMAT([value] / 100, "0.0%"), FORMAT([value], "#,0.##")))',
+                        'IF(ISBLANK([value]), BLANK(), SWITCH([format], "money", FORMAT([value] / 100, "#,0.00") & " " & [currency], "percent", FORMAT([value] / 100, "0.0%"), FORMAT([value], IF(ROUND([value], 2) = INT(ROUND([value], 2)), "#,0", "#,0.##"))))',
                     },
                   ]
                 : []),

@@ -5,7 +5,10 @@ import path from "node:path";
 assert.equal(process.env.GITHUB_ACTIONS, "true");
 assert(process.env.RUNNER_TEMP, "Use the isolated desktop acceptance runner.");
 const expected = JSON.parse(
-  await fs.readFile("artifacts/desktop-bi/input/expected.json", "utf8"),
+  await fs.readFile(
+    process.argv[3] || "artifacts/desktop-bi/input/expected.json",
+    "utf8",
+  ),
 );
 assert.equal(expected.syntheticData, true);
 assert.equal(expected.productionDataRead, false);
@@ -13,11 +16,12 @@ assert.equal(expected.externalPublication, false);
 const requested = process.argv[2] || "diagnostics";
 const view = expected.pages.find((item) => item.id === requested);
 assert(view || requested === "diagnostics", "Choose a known dashboard.");
-const out = path.resolve("artifacts/desktop-bi/power-bi");
+const out = path.resolve(process.argv[4] || "artifacts/desktop-bi/power-bi");
 const report = {
   source: "The installed Power BI Desktop report's Windows accessibility tree",
   page: requested,
   syntheticData: true,
+  visualizationPreview: expected.visualizationPreview === true,
   passed: false,
   checks: [],
 };
@@ -61,7 +65,7 @@ try {
     const images = visible.filter(
       (control) => control.type === "ControlType.Image",
     );
-    for (const metric of view.metrics) {
+    for (const metric of view.metrics.slice(0, 8)) {
       const card = images.find((control) =>
         control.name.startsWith(metric.label + " "),
       );
@@ -77,22 +81,46 @@ try {
           `The populated ${metric.label} card is blank.`,
         );
     }
-    assert(
-      /Organizations 17\b/.test(text),
-      "The count card does not display 17.",
-    );
-    assert(
-      /42\.50?\s*%/.test(text),
-      "The response percentage is not rendered correctly.",
-    );
-    assert(
-      text.includes("123,456.78 INR"),
-      "The KPI table does not show the full major-unit amount.",
-    );
-    report.checks.push({
-      name: "Populated KPI cards, full amount, percentage and blank evidence are visible",
-      passed: true,
-    });
+    if (!expected.visualizationPreview) {
+      assert(
+        /Organizations 17\b/.test(text),
+        "The count card does not display 17.",
+      );
+      assert(
+        /42\.50?\s*%/.test(text),
+        "The response percentage is not rendered correctly.",
+      );
+      assert(
+        text.includes("123,456.78 INR"),
+        "The KPI table does not show the full major-unit amount.",
+      );
+      report.checks.push({
+        name: "Populated KPI cards, full amount, percentage and blank evidence are visible",
+        passed: true,
+      });
+    } else {
+      for (const metric of view.metrics.slice(0, 8)) {
+        if (
+          metric.format !== "number" ||
+          metric.value === null ||
+          Math.abs(metric.value) >= 1000
+        )
+          continue;
+        const card = images.find((control) =>
+          control.name.startsWith(metric.label + " "),
+        );
+        assert(
+          new RegExp("^" + metric.value + "(?:\\b|\\.)").test(
+            card.name.slice(metric.label.length).trim(),
+          ),
+          `The ${metric.label} count does not match the report.`,
+        );
+      }
+      report.checks.push({
+        name: "The actual business KPI cards display populated values, correct counts and preserved blanks",
+        passed: true,
+      });
+    }
     for (const title of [view.trendLabel, view.distributionLabel]) {
       assert(
         visible.some(

@@ -180,6 +180,7 @@ export async function startNativeFixture({
     online,
     offline,
     requirement,
+    analytics,
     diagnostics: () => ({ requests, online: !!server?.listening }),
     downloadedReport: () =>
       downloadedReport ? Buffer.from(downloadedReport) : undefined,

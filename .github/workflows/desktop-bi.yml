@@ -12,6 +12,10 @@ on:
       - server/bi-exports.ts
       - server/tableau-exports.ts
       - scripts/prepare-bi-desktop.ts
+      - scripts/native-fixture.mjs
+      - server/analytics.ts
+      - server/seed.ts
+      - shared/analytics.ts
       - scripts/*bi-desktop*
       - scripts/desktop-bi-tools.json
       - scripts/desktop-bi-model/**
@@ -56,6 +60,10 @@ jobs:
         id: desktop
         shell: powershell
         run: ./scripts/verify-bi-desktop.ps1 -Platform '${{ matrix.platform }}'
+      - name: Capture the actual business dashboards with labelled illustrative data
+        if: matrix.platform == 'power-bi'
+        shell: powershell
+        run: ./scripts/verify-bi-desktop.ps1 -Platform power-bi -Snapshot presentation
       - uses: actions/cache/save@v4
         if: always() && steps.desktop.outputs.installer_verified == 'true' && steps.installer-cache.outputs.cache-hit != 'true'
         with:
