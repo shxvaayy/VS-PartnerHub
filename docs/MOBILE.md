@@ -47,6 +47,29 @@ On native foreground/resume, the app explicitly invalidates active data queries,
 
 ## Verification boundary
 
+### Signed Android release
+
+The separate **Build signed Android release** workflow produces a non-debuggable APK and an AAB signed with the same retained project identity. It runs on relevant pushes and supports manual `version_code` and `version_name` inputs. The default version code is its increasing workflow run number. Both packages load the production HTTPS origin; neither contains test credentials or a development server URL.
+
+The public certificate fingerprint is recorded in `android/release-signing.json`. The private PKCS12 and password remain outside Git and are supplied through encrypted Actions secrets `PARTNERHUB_ANDROID_KEYSTORE` and `PARTNERHUB_ANDROID_STORE_PASSWORD`. `PARTNERHUB_ANDROID_SIGNING_ESCROW` encrypts the recovery envelope. A missing key or mismatched release certificate fails the build. The temporary plaintext keystore is removed even after a failing job.
+
+[Release acceptance on `2898cf6`](https://github.com/shxvaayy/VS-PartnerHub/actions/runs/36790218566) passed all **4/4 identity, package and signature checks** and **3/3 installed-release checks**. The exact signed APK installed on an API 35 emulator, rendered the actual live HTTPS sign-in screen and remained running. The driver waits for Android's validated network before launch; connection diagnostics contain host/error codes and never weaken TLS verification. This launch used no live login credentials, changed no production business records and sent no email. Full authenticated workflows have their separate installed-app evidence below.
+
+The run's `partnerhub-android-release-3` artifact contains `VS-PartnerHub-Android.apk`, `VS-PartnerHub-Android.aab`, their SHA-256 hashes, public signing metadata, launch evidence, release lint results and an encrypted signing backup. Artifacts have 30-day retention. APK files support direct installation; AAB files are for a chosen Android distribution service. Google Play publication and company physical-device acceptance remain separate.
+
+Signing recovery passed six local checks, including tampered ciphertext, the wrong recovery key and refusal to overwrite an existing destination. The independently downloaded GitHub recovery envelope was also restored and its certificate and package hashes matched. Restore into a new private directory using:
+
+```sh
+node scripts/restore-android-signing.mjs \
+  --input /private/recovery/signing-backup.json.enc \
+  --key /private/recovery/android-escrow-key \
+  --output /private/recovery/restored-android-signing
+```
+
+Keep the recovery key and restored signing material private. Future updates must retain this certificate and increase the version code unless the selected distribution service performs its own managed app signing. Android signing does not supply an Apple signing identity.
+
+### Authenticated emulator and simulator workflows
+
 The `Verify native applications` GitHub workflow compiles Android with JDK 21 / SDK 36 and iOS on a macOS runner with Xcode 26.3. It inspects packaged identity, server configuration, offline reconnect destinations and embedded branding. Android produces a debug-signed APK, unsigned release AAB and lint report. iOS produces an unsigned simulator app, launch screenshot and build log. Reports include commit IDs and artifact hashes. This workflow runs independently of `Verify PartnerHub`; both workflows must pass for a release affecting the native applications.
 
 After copying those production-origin artifacts, the workflow builds separate localhost packages for authenticated acceptance. `scripts/native-fixture.mjs` creates a disposable SQLite database/uploads and a loopback-only test controller; live databases, providers and email delivery are disabled. Android uses Playwright's installed-WebView API on an API 35 emulator. iPhone acceptance uses actual XCTest UI interactions with a simulator. The iOS test target is generated only in the disposable verification checkout.

@@ -34,6 +34,19 @@ describe("Packaged Tableau dashboards", () => {
     const sheets = children(children(root, "worksheets")[0], "worksheet");
     const dashboards = children(children(root, "dashboards")[0], "dashboard");
     const windows = children(children(root, "windows")[0], "window");
+    // Native Tableau rejects a structurally valid XML file when the required
+    // workbook provenance or window content-model elements are absent.
+    expect(root.getAttribute("source-build")).toMatch(/\S/);
+    for (const window of windows) {
+      const nodes = Array.from(window.childNodes)
+        .filter((node) => node.nodeType === 1)
+        .map((node) => node.nodeName);
+      expect(nodes).toEqual(
+        window.getAttribute("class") === "dashboard"
+          ? ["viewpoints", "active", "device-preview"]
+          : ["cards", "viewpoint"],
+      );
+    }
     expect(
       dashboards.map((dashboard) => dashboard.getAttribute("name")),
     ).toEqual(report.views.map((view) => view.title));

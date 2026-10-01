@@ -369,15 +369,26 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
       color: fill("#173f35"),
       transparency: literal(0),
     };
-  const cards = view.metrics.slice(0, biHighlights).map((metric, index) =>
-    visual(
+  const highlighted = view.metrics.slice(0, biHighlights);
+  const cardColumns =
+    highlighted.length <= 4
+      ? Math.max(1, highlighted.length)
+      : Math.ceil(highlighted.length / 2);
+  const cards = highlighted.map((metric, index) => {
+    const row = Math.floor(index / cardColumns);
+    const rowCount = Math.min(
+      cardColumns,
+      highlighted.length - row * cardColumns,
+    );
+    const cardWidth = (1232 - (rowCount - 1) * 12) / rowCount;
+    return visual(
       `${view.id}-metric-${metric.key}`,
       "card",
       metric.label,
       {
-        x: 24 + (index % 4) * 311,
-        y: 100 + Math.floor(index / 4) * 90,
-        width: 299,
+        x: 24 + (index % cardColumns) * (cardWidth + 12),
+        y: 100 + row * 90,
+        width: cardWidth,
         height: 78,
       },
       {
@@ -398,9 +409,9 @@ function pageVisuals(view: ReportView, report: AnalyticsReport) {
         ],
         categoryLabels: [{ properties: { show: literal(false) } }],
       },
-    ),
-  );
-  const chartY = 102 + Math.max(1, Math.ceil(cards.length / 4)) * 90;
+    );
+  });
+  const chartY = 102 + Math.max(1, Math.ceil(cards.length / cardColumns)) * 90;
   const chartObjects = {
     dataPoint: [{ properties: { defaultColor: fill(accent) } }],
     categoryAxis: [{ properties: { showAxisTitle: literal(false) } }],
@@ -631,7 +642,7 @@ export function powerBiFiles(report: AnalyticsReport, appUrl: string): Files {
 
 1. Extract the complete ZIP into one folder.
 2. Open VS PartnerHub.pbip in a current Power BI Desktop release with Power BI Project support.
-3. Select Refresh once to load the included, authorized data snapshot. No account or API token is needed for this snapshot.
+3. Select Refresh to load the included, authorized data snapshot. If Desktop prompts Apply changes, select it once and wait for loading to finish. No account or API token is needed for this snapshot.
 4. Use the report page tabs to explore the ${report.views.length} included dashboards. All KPI definitions and source tables are available in the semantic model.
 
 Period: ${report.from} through ${report.to} (inclusive UTC creation dates).

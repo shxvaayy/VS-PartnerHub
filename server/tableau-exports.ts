@@ -11,10 +11,10 @@ import { biAccent, biValue } from "../shared/bi.js";
 
 type Files = Record<string, Uint8Array>;
 type Source = { id: string; caption: string; file: string; table: ReportTable };
-type Sheet = { name: string; xml: string };
+type Sheet = { name: string; xml: string; fit: "entire-view" | "fit-width" };
 const workbookName = "VS PartnerHub.twb";
-const width = 1366;
-const height = 1040;
+const width = 1280;
+const height = 800;
 
 // Tableau's legacy relational workbook format remains editable in current Desktop.
 // Format references and the independent parser check are documented in ANALYTICS.md.
@@ -225,6 +225,10 @@ function worksheet(
   const mark = options.mark || "Text";
   return {
     name,
+    fit:
+      mark === "Bar" || (mark === "Text" && (options.rows?.length || 0) > 0)
+        ? "fit-width"
+        : "entire-view",
     xml: tag(
       "worksheet",
       { name },
@@ -296,8 +300,41 @@ function worksheet(
               tag(
                 "style-rule",
                 { element: "worksheet" },
-                format("font-family", "Arial") + format("font-size", "10"),
+                format("font-family", "Arial") + format("font-size", "11"),
               ) +
+                tag(
+                  "style-rule",
+                  { element: "cell" },
+                  format(
+                    "height",
+                    options.label === "definition" ? "30" : "24",
+                  ) +
+                    format("font-size", "11") +
+                    format("text-align", "left"),
+                ) +
+                tag(
+                  "style-rule",
+                  { element: "header" },
+                  format("font-size", "11") +
+                    (options.rows || [])
+                      .map((key) =>
+                        tag("format", {
+                          attr: "width",
+                          field: resolve(key),
+                          value:
+                            key === "label"
+                              ? 240
+                              : key === "display_value"
+                                ? 170
+                                : key === "scope"
+                                  ? 100
+                                  : key === "category"
+                                    ? 190
+                                    : 160,
+                        }),
+                      )
+                      .join(""),
+                ) +
                 tag(
                   "style-rule",
                   { element: "gridline" },
@@ -332,7 +369,7 @@ function worksheet(
                         ) +
                         format("mark-labels-cull", "true") +
                         format("font-family", "Arial") +
-                        format("font-size", options.metric ? "24" : "10"),
+                        format("font-size", options.metric ? "24" : "11"),
                     ),
                   ),
               ),
@@ -354,7 +391,7 @@ function prepareSource(
       ? [
           {
             key: "display_value",
-            label: "Formatted value",
+            label: "Value",
             format: "text" as const,
           },
         ]
@@ -371,7 +408,15 @@ function prepareSource(
     file: `${view.id}_${table.id}.csv`,
     table: {
       ...table,
-      columns: [...table.columns, ...derived, ...metadata],
+      columns: [
+        ...table.columns.map((column) =>
+          table.id === "metrics" && column.key === "scope"
+            ? { ...column, label: "Scope" }
+            : column,
+        ),
+        ...derived,
+        ...metadata,
+      ],
       rows: table.rows.map((row) => ({
         ...row,
         ...(table.id === "metrics"
@@ -419,6 +464,7 @@ export function tableauFiles(report: AnalyticsReport): Files {
       properties: Record<string, unknown>,
       contents = "",
       background = "#ffffff",
+      inset = 8,
     ) =>
       tag(
         "zone",
@@ -436,7 +482,7 @@ export function tableauFiles(report: AnalyticsReport): Files {
             {},
             format("background-color", background) +
               format("border-style", "none") +
-              format("margin", "12"),
+              format("margin", String(inset)),
           ),
       );
     const textZone = (
@@ -472,6 +518,7 @@ export function tableauFiles(report: AnalyticsReport): Files {
             .join(""),
         ),
         background,
+        3,
       );
     const sheetZone = (
       sheet: Sheet,
@@ -484,24 +531,28 @@ export function tableauFiles(report: AnalyticsReport): Files {
       return zone(x, y, w, h, { name: sheet.name, "show-title": "true" });
     };
     const zones: string[] = [
-      textZone(24, 16, 1318, 102, [
+      textZone(24, 8, 1232, 22, [
         {
-          value: "VS PARTNERHUB  /  BUSINESS INTELLIGENCE\n",
+          value: "VS PARTNERHUB  /  BUSINESS INTELLIGENCE",
           size: 10,
           color: accent,
           bold: true,
         },
-        { value: `${view.title}\n`, size: 26, color: "#20382d", bold: true },
+      ]),
+      textZone(24, 32, 1232, 42, [
+        { value: view.title, size: 24, color: "#20382d", bold: true },
+      ]),
+      textZone(24, 78, 1232, 28, [
         {
           value: `${report.from} — ${report.to} · ${report.currency} · ${view.description}`,
-          size: 11,
+          size: 10,
         },
       ]),
     ];
     const highlighted = view.metrics.slice(0, 4);
-    const gap = 16;
+    const gap = 12;
     const cardWidth =
-      (1318 - gap * Math.max(0, highlighted.length - 1)) /
+      (1232 - gap * Math.max(0, highlighted.length - 1)) /
       Math.max(1, highlighted.length);
     highlighted.forEach((metric, index) =>
       zones.push(
@@ -513,9 +564,9 @@ export function tableauFiles(report: AnalyticsReport): Files {
             { label: "display_value", metric: metric.key, accent },
           ),
           24 + index * (cardWidth + gap),
-          130,
+          118,
           cardWidth,
-          130,
+          88,
         ),
       ),
     );
@@ -528,9 +579,9 @@ export function tableauFiles(report: AnalyticsReport): Files {
           accent,
         }),
         24,
-        280,
-        736,
-        288,
+        218,
+        704,
+        258,
       ),
     );
     zones.push(
@@ -547,10 +598,10 @@ export function tableauFiles(report: AnalyticsReport): Files {
             accent,
           },
         ),
-        776,
-        280,
-        566,
-        288,
+        740,
+        218,
+        516,
+        258,
       ),
     );
     zones.push(
@@ -560,25 +611,23 @@ export function tableauFiles(report: AnalyticsReport): Files {
           `${view.title} — All KPIs`,
           "All KPIs · values, measurement scope and calculation",
           {
-            rows: ["label", "scope", "definition"],
-            label: "display_value",
+            rows: ["label", "display_value", "scope"],
+            label: "definition",
             accent: "#27352f",
           },
         ),
         24,
-        588,
-        1318,
-        324,
+        488,
+        1232,
+        232,
       ),
     );
     zones.push(
-      textZone(24, 928, 1318, 92, [
+      textZone(24, 732, 1232, 52, [
         { value: `AUTHORIZED SNAPSHOT · ${report.generatedAt}\n`, bold: true },
         {
-          value: [
-            ...view.notes,
-            "Blank rates mean there is no qualifying evidence. Detail datasets retain minor currency units; there is no exchange-rate conversion. Open the worksheet tabs or Data pane to inspect all included datasets.",
-          ].join(" "),
+          value:
+            "Blank rates mean there is no qualifying evidence. Detail datasets retain minor currency units; there is no exchange-rate conversion. All datasets and KPI definitions are available in the worksheet tabs and Data pane.",
           size: 9,
         },
       ]),
@@ -657,7 +706,11 @@ export function tableauFiles(report: AnalyticsReport): Files {
     dashboardWindows.push(
       tag(
         "window",
-        { class: "dashboard", name: view.title, maximized: "true" },
+        {
+          class: "dashboard",
+          name: view.title,
+          ...(dashboardWindows.length === 0 ? { maximized: "true" } : {}),
+        },
         tag(
           "viewpoints",
           {},
@@ -666,11 +719,21 @@ export function tableauFiles(report: AnalyticsReport): Files {
               tag(
                 "viewpoint",
                 { name: sheet.name },
-                tag("zoom", { type: "entire-view" }),
+                tag("zoom", { type: sheet.fit }),
               ),
             )
             .join(""),
-        ),
+        ) +
+          tag("active", { id: -1 }) +
+          tag(
+            "device-preview",
+            {},
+            tag("device", {
+              "is-portrait": "false",
+              name: "Generic Desktop",
+              type: "Desktop",
+            }),
+          ),
       ),
     );
   }
@@ -681,6 +744,8 @@ export function tableauFiles(report: AnalyticsReport): Files {
         "workbook",
         {
           version: "10.5",
+          // The source is PartnerHub's writer, not a Tableau application build.
+          "source-build": "0.0.0 (0000.00.0000.0000)",
           "source-platform": "win",
           "xmlns:user": "http://www.tableausoftware.com/xml/user",
         },
@@ -696,7 +761,8 @@ export function tableauFiles(report: AnalyticsReport): Files {
                   tag(
                     "window",
                     { class: "worksheet", name: sheet.name },
-                    tag("viewpoint", {}, tag("zoom", { type: "fit-width" })),
+                    tag("cards") +
+                      tag("viewpoint", {}, tag("zoom", { type: "fit-width" })),
                   ),
                 )
                 .join(""),
