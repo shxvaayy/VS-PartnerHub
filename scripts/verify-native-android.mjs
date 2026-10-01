@@ -18,6 +18,11 @@ const checks = [],
   fileIntegrity = [],
   nativeWindows = [],
   hostAlerts = [];
+const automationCleanup = {
+  driversStopped: false,
+  deviceClosed: false,
+  fixtureClosed: false,
+};
 const dismissedHostWindows = new Set();
 let fixture, device, page;
 const adb = (args) =>
@@ -26,6 +31,22 @@ const adb = (args) =>
     timeout: 30000,
     maxBuffer: 8 * 1024 * 1024,
   });
+async function within(promise, milliseconds, description) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(description + " timed out.")),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function check(name, action) {
   await action();
   checks.push({ name, passed: true });
@@ -476,8 +497,49 @@ try {
     );
   } catch {}
 } finally {
-  await device?.close().catch(() => {});
-  await fixture?.close();
+  let cleanupFailed = false;
+  try {
+    if (device) {
+      // Playwright's Android driver owns a long-running `am instrument`
+      // connection. Stop only its test packages before closing the device;
+      // otherwise that connection can keep Node alive after every check passes.
+      for (const automationPackage of [
+        "com.microsoft.playwright.androiddriver",
+        "com.microsoft.playwright.androiddriver.test",
+      ]) {
+        adb(["shell", "am", "force-stop", automationPackage]);
+      }
+      automationCleanup.driversStopped = true;
+      await within(
+        device.close(),
+        10000,
+        "Android automation connection cleanup",
+      );
+      automationCleanup.deviceClosed = true;
+    }
+  } catch (error) {
+    cleanupFailed = true;
+    process.exitCode = 1;
+    checks.push({
+      name: "Android automation cleanup failure",
+      passed: false,
+      error: String(error),
+    });
+    console.error(error);
+  }
+  try {
+    await within(fixture?.close(), 10000, "Native fixture cleanup");
+    automationCleanup.fixtureClosed = true;
+  } catch (error) {
+    cleanupFailed = true;
+    process.exitCode = 1;
+    checks.push({
+      name: "Android fixture cleanup failure",
+      passed: false,
+      error: String(error),
+    });
+    console.error(error);
+  }
   await fs.writeFile(
     path.join(out, "report.json"),
     JSON.stringify(
@@ -491,6 +553,7 @@ try {
         fileIntegrity,
         nativeWindows,
         hostAlerts,
+        automationCleanup,
         fixtureRequests: fixture?.diagnostics().requests || [],
         isolatedFixtures: true,
         realNativeWebView: true,
@@ -502,4 +565,8 @@ try {
       2,
     ),
   );
+  console.log("Android acceptance evidence and automation cleanup recorded.");
+  // A failed cleanup must retain its report and fail promptly, even when the
+  // native driver has left an open connection. Successful runs exit normally.
+  if (cleanupFailed) process.exit(1);
 }

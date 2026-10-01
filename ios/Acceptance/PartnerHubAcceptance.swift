@@ -79,9 +79,16 @@ final class PartnerHubAcceptance: XCTestCase {
 
     func openFileActions() {
         tap(app.buttons["Download Power BI project"].firstMatch)
+        let sheet = app.otherElements["ActivityListView"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 30), "The native file sheet must open.")
         // iOS 26 exposes system share actions as cells, older versions as buttons.
-        let save = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
-        XCTAssertTrue(save.waitForExistence(timeout: 30), "The native file sheet must offer Save to Files.")
+        // On a cold simulator the system's remote share service can populate
+        // after the sheet itself appears. Wait for its actual enabled action.
+        let save = sheet.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            save.exists && save.isHittable
+        }, object: save)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 60), .completed, "The native file sheet must offer a visible Save to Files action.")
         verifyCache("populated")
     }
 
